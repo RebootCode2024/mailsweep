@@ -165,7 +165,7 @@ Check Supabase → is_paid?
 > **Claude Code: Update this section after completing each feature.**
 > Format: `- [Day X] **Feature name** — what it does (1–2 lines)`
 
-- [Day 1] **Repo + Apps Script scaffold** — initialized private GitHub repo, set up `src/` with `appsscript.json` (Gmail add-on manifest, `gmail.modify` scope, homepage trigger), entry points in `Code.gs`, Card Service UI stubs in `Cards.gs`, and Gmail search/trash skeleton in `GmailService.gs`.
+- [Day 1] **Repo + Apps Script scaffold live in Gmail** — created private GitHub repo, GCP project `mailsweep-498802` with Gmail API enabled, OAuth platform configured. Apps Script project linked to GCP and pushed via clasp. Manifest declares `gmail.addons.execute` + `gmail.modify` scopes. Test deployment installed; add-on renders in Gmail sidebar with a Google-blue delete-sweep icon and a working homepage card.
 
 ---
 
