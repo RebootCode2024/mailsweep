@@ -26,10 +26,33 @@ function onBackToFilters(e) {
     .build();
 }
 
+function onDeletePrompt(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const filters = JSON.parse(params.filters || '{}');
+  const count = Number(params.count || 0);
+  return pushCard_(buildConfirmCard(filters, count));
+}
+
 function onDeleteConfirm(e) {
-  const filters = readFilters_(e);
-  const result = deleteMatchingThreads_(filters);
-  return buildResultCard(result);
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const filters = JSON.parse(params.filters || '{}');
+  try {
+    const result = deleteMatchingThreads_(filters);
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(buildResultCard(filters, result)))
+      .setNotification(CardService.newNotification()
+        .setText('Trashed ' + result.deleted + ' thread' + (result.deleted === 1 ? '' : 's') + '. Refresh Gmail to update the list.'))
+      .setStateChanged(true)
+      .build();
+  } catch (err) {
+    return notify_('Error: ' + err.message);
+  }
+}
+
+function onBackToHome(e) {
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().popToRoot())
+    .build();
 }
 
 function pushCard_(card) {

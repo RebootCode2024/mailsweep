@@ -81,15 +81,25 @@ function buildPreviewCard(filters, count) {
     );
   }
 
+  const buttons = CardService.newButtonSet();
+
   if (count > 0) {
-    section.addWidget(CardService.newTextParagraph()
-      .setText('Delete button coming Day 10.'));
+    const deleteBtn = CardService.newTextButton()
+      .setText('Move ' + count.toLocaleString() + ' to Trash')
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(
+        CardService.newAction()
+          .setFunctionName('onDeletePrompt')
+          .setParameters({ filters: JSON.stringify(filters), count: String(count) })
+      );
+    buttons.addButton(deleteBtn);
   }
 
   const back = CardService.newTextButton()
-    .setText('Back to filters')
+    .setText('Back')
     .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'));
-  section.addWidget(CardService.newButtonSet().addButton(back));
+  buttons.addButton(back);
+  section.addWidget(buttons);
 
   return CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle('Preview'))
@@ -97,13 +107,75 @@ function buildPreviewCard(filters, count) {
     .build();
 }
 
-function buildResultCard(result) {
+function buildConfirmCard(filters, count) {
+  const warning = CardService.newTextParagraph().setText(
+    'You are about to move <b>' + count.toLocaleString() + '</b> email thread' +
+    (count === 1 ? '' : 's') + ' to <b>Trash</b>. ' +
+    'Trashed mail is recoverable for 30 days, then permanently deleted by Gmail.'
+  );
+
+  const confirm = CardService.newTextButton()
+    .setText('Yes, move to Trash')
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+    .setBackgroundColor('#d93025')
+    .setOnClickAction(
+      CardService.newAction()
+        .setFunctionName('onDeleteConfirm')
+        .setParameters({ filters: JSON.stringify(filters) })
+    );
+
+  const cancel = CardService.newTextButton()
+    .setText('Cancel')
+    .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'));
+
   return CardService.newCardBuilder()
-    .setHeader(CardService.newCardHeader().setTitle('Done'))
+    .setHeader(CardService.newCardHeader().setTitle('Confirm delete'))
     .addSection(
       CardService.newCardSection()
-        .addWidget(CardService.newTextParagraph().setText('Deleted ' + result.deleted + ' threads.'))
+        .addWidget(warning)
+        .addWidget(CardService.newButtonSet().addButton(confirm).addButton(cancel))
     )
+    .build();
+}
+
+function buildResultCard(filters, result) {
+  const lines = [];
+  lines.push('Moved <b>' + result.deleted.toLocaleString() + '</b> thread' +
+             (result.deleted === 1 ? '' : 's') + ' to Trash.');
+  if (result.timedOut) {
+    lines.push('Hit Apps Script\'s 6-minute limit before finishing.');
+  }
+  if (result.remaining > 0) {
+    lines.push('<b>' + result.remaining.toLocaleString() + '</b> matching thread' +
+               (result.remaining === 1 ? '' : 's') + ' still remain.');
+  }
+
+  const section = CardService.newCardSection()
+    .addWidget(CardService.newTextParagraph().setText(lines.join('<br><br>')));
+
+  const buttons = CardService.newButtonSet();
+  if (result.remaining > 0) {
+    buttons.addButton(
+      CardService.newTextButton()
+        .setText('Run again')
+        .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+        .setOnClickAction(
+          CardService.newAction()
+            .setFunctionName('onDeleteConfirm')
+            .setParameters({ filters: JSON.stringify(filters) })
+        )
+    );
+  }
+  buttons.addButton(
+    CardService.newTextButton()
+      .setText('Back to filters')
+      .setOnClickAction(CardService.newAction().setFunctionName('onBackToHome'))
+  );
+  section.addWidget(buttons);
+
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('Done'))
+    .addSection(section)
     .build();
 }
 

@@ -4,6 +4,7 @@
  */
 
 var BATCH_SIZE = 500;
+var MAX_RUN_MS = 5 * 60 * 1000;
 
 function buildQuery_(filters) {
   var parts = [];
@@ -23,6 +24,37 @@ function countMatchingThreads_(filters) {
 }
 
 function deleteMatchingThreads_(filters) {
-  // TODO: paginate Gmail.Users.Threads.list, call Threads.trash in batches of BATCH_SIZE.
-  return { deleted: 0, remaining: 0 };
+  const q = buildQuery_(filters);
+  if (!q) return { deleted: 0, remaining: 0, timedOut: false };
+
+  const start = Date.now();
+  let deleted = 0;
+  let pageToken;
+  let timedOut = false;
+
+  do {
+    if (Date.now() - start > MAX_RUN_MS) { timedOut = true; break; }
+
+    const page = Gmail.Users.Threads.list('me', {
+      q: q,
+      maxResults: BATCH_SIZE,
+      pageToken: pageToken
+    });
+    const threads = page.threads || [];
+    if (!threads.length) break;
+
+    for (let i = 0; i < threads.length; i++) {
+      if (Date.now() - start > MAX_RUN_MS) { timedOut = true; break; }
+      try {
+        Gmail.Users.Threads.trash('me', threads[i].id);
+        deleted++;
+      } catch (e) {
+        // swallow per-thread errors; counted as remaining
+      }
+    }
+    pageToken = page.nextPageToken;
+  } while (pageToken && !timedOut);
+
+  const remaining = countMatchingThreads_(filters);
+  return { deleted: deleted, remaining: remaining, timedOut: timedOut };
 }
