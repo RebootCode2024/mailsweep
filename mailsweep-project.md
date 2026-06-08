@@ -166,6 +166,9 @@ Check Supabase → is_paid?
 > Format: `- [Day X] **Feature name** — what it does (1–2 lines)`
 
 - [Day 1] **Repo + Apps Script scaffold live in Gmail** — created private GitHub repo, GCP project `mailsweep-498802` with Gmail API enabled, OAuth platform configured. Apps Script project linked to GCP and pushed via clasp. Manifest declares `gmail.addons.execute` + `gmail.modify` scopes. Test deployment installed; add-on renders in Gmail sidebar with a Google-blue delete-sweep icon and a working homepage card.
+- [Day 2] **Sender + subject filter inputs** — replaced placeholder text with two real Card Service text inputs (`From` and `Subject contains`) with hint examples.
+- [Day 3] **Label + date range filters** — added a label text input plus two date pickers (`Received after` / `Received before`), split into a "Filters" section and a "Date range (optional)" section. Date-picker values are converted to Gmail's `YYYY/MM/DD` query format.
+- [Day 4] **Preview Count button wired to Gmail** — enabled the Gmail advanced service, implemented `countMatchingThreads_` via `Gmail.Users.Threads.list` (instant `resultSizeEstimate`). Added a filled "Preview count" button that navigates to a Preview card showing the count, the underlying Gmail query, and a "Back to filters" button. Empty-filter and API-error paths return a sidebar notification instead of a crash. Verified end-to-end against a real inbox.
 
 ---
 

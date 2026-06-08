@@ -16,8 +16,10 @@ function buildQuery_(filters) {
 }
 
 function countMatchingThreads_(filters) {
-  // TODO: use Gmail.Users.Threads.list with resultSizeEstimate or paginated count.
-  return 0;
+  const q = buildQuery_(filters);
+  if (!q) return 0;
+  const res = Gmail.Users.Threads.list('me', { q: q, maxResults: 1 });
+  return res.resultSizeEstimate || 0;
 }
 
 function deleteMatchingThreads_(filters) {
