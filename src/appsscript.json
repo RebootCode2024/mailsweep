@@ -11,7 +11,7 @@
   "addOns": {
     "common": {
       "name": "MailSweep",
-      "logoUrl": "https://cdn.jsdelivr.net/gh/google/material-design-icons@master/png/action/delete_sweep/materialicons/48dp/2x/baseline_delete_sweep_black_48dp.png",
+      "logoUrl": "https://www.gstatic.com/images/icons/material/system/2x/delete_sweep_black_48dp.png",
       "useLocaleFromApp": true,
       "homepageTrigger": {
         "runFunction": "onHomepage",
