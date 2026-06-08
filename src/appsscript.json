@@ -11,7 +11,7 @@
   "addOns": {
     "common": {
       "name": "MailSweep",
-      "logoUrl": "https://raw.githubusercontent.com/RebootCode2024/mailsweep/main/assets/logo.png",
+      "logoUrl": "https://cdn.jsdelivr.net/gh/google/material-design-icons@master/png/action/delete_sweep/materialicons/48dp/2x/baseline_delete_sweep_black_48dp.png",
       "useLocaleFromApp": true,
       "homepageTrigger": {
         "runFunction": "onHomepage",
