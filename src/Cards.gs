@@ -70,7 +70,7 @@ function buildPreviewCard(filters, count, capped) {
     : count.toLocaleString();
   const headline = count === 0
     ? 'No matching emails.'
-    : '<b>' + countText + '</b> matching email thread' + (count === 1 ? '' : 's') + '.';
+    : '<b>' + countText + '</b> matching email' + (count === 1 ? '' : 's') + '.';
 
   const section = CardService.newCardSection()
     .addWidget(CardService.newTextParagraph().setText(headline));
@@ -119,7 +119,7 @@ function buildConfirmCard(filters, count, total, capped) {
   total = total || count;
   const countText = capped ? count.toLocaleString() + '+' : count.toLocaleString();
   const warning = CardService.newTextParagraph().setText(
-    'You are about to move <b>' + countText + '</b> email thread' +
+    'You are about to move <b>' + countText + '</b> email' +
     (count === 1 ? '' : 's') + ' to <b>Trash</b>. ' +
     'Trashed mail is recoverable for 30 days, then permanently deleted by Gmail.'
   );
@@ -164,7 +164,7 @@ function buildResultCard(filters, result, total, deletedSoFar) {
 
   const lines = [];
   lines.push('Trashed <b>' + deletedSoFar.toLocaleString() + '</b> of <b>' +
-             total.toLocaleString() + '</b> thread' + (total === 1 ? '' : 's') +
+             total.toLocaleString() + '</b> email' + (total === 1 ? '' : 's') +
              (isDone ? '.' : ' so far.'));
 
   if (result.timedOut) {
