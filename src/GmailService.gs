@@ -5,7 +5,7 @@
 
 var BATCH_SIZE = 500;             // page size for list calls
 var BATCH_TRASH_SIZE = 1000;      // max IDs per batchModify (Gmail API hard limit)
-var MAX_RUN_MS = 4 * 60 * 1000;   // safety buffer below the 6-min Apps Script wall
+var MAX_RUN_MS = 3 * 60 * 1000;   // safety buffer below the 6-min Apps Script wall
 var COUNT_HARD_CAP = 10000;       // stop counting beyond this; show "10,000+"
 
 function buildQuery_(filters) {
@@ -90,20 +90,15 @@ function deleteMatchingThreads_(filters) {
     } catch (e) {}
   }
 
+  // Fast recount: one list call only, so we never burn time after a huge delete.
   let remaining = 0;
   let remainingCapped = false;
-  if (Date.now() - start < MAX_RUN_MS) {
-    try {
-      const c = countMatchingThreads_(filters);
-      remaining = c.count;
-      remainingCapped = c.capped;
-    } catch (e) {
-      remaining = timedOut ? Math.max(1, BATCH_SIZE) : 0;
-      remainingCapped = timedOut;
-    }
-  } else {
-    // No budget left to recount — assume more may remain if we timed out
-    remaining = timedOut ? Math.max(1, BATCH_SIZE) : 0;
+  try {
+    const fast = countMatchingFast_(filters);
+    remaining = fast.count;
+    remainingCapped = fast.capped;
+  } catch (e) {
+    remaining = timedOut ? BATCH_SIZE : 0;
     remainingCapped = timedOut;
   }
   return {
@@ -112,4 +107,19 @@ function deleteMatchingThreads_(filters) {
     remainingCapped: remainingCapped,
     timedOut: timedOut
   };
+}
+
+// Single-API-call count for after-delete: returns N and "+" flag if more pages exist.
+// Bounded time (< 1s) so it's safe even at the edge of the run budget.
+function countMatchingFast_(filters) {
+  const q = buildQuery_(filters);
+  if (!q) return { count: 0, capped: false };
+  const res = Gmail.Users.Messages.list('me', {
+    q: q,
+    maxResults: BATCH_SIZE,
+    fields: 'nextPageToken,messages/id'
+  });
+  const count = (res.messages || []).length;
+  const capped = !!res.nextPageToken;
+  return { count: count, capped: capped };
 }
