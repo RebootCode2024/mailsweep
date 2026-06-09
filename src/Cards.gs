@@ -63,11 +63,14 @@ function buildFilterCard() {
     .build();
 }
 
-function buildPreviewCard(filters, count) {
+function buildPreviewCard(filters, count, capped) {
   const query = buildQuery_(filters);
+  const countText = capped
+    ? count.toLocaleString() + '+'
+    : count.toLocaleString();
   const headline = count === 0
     ? 'No matching emails.'
-    : '<b>' + count.toLocaleString() + '</b> matching email thread' + (count === 1 ? '' : 's') + '.';
+    : '<b>' + countText + '</b> matching email thread' + (count === 1 ? '' : 's') + '.';
 
   const section = CardService.newCardSection()
     .addWidget(CardService.newTextParagraph().setText(headline));
@@ -85,12 +88,17 @@ function buildPreviewCard(filters, count) {
 
   if (count > 0) {
     const deleteBtn = CardService.newTextButton()
-      .setText('Move ' + count.toLocaleString() + ' to Trash')
+      .setText('Move ' + countText + ' to Trash')
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(
         CardService.newAction()
           .setFunctionName('onDeletePrompt')
-          .setParameters({ filters: JSON.stringify(filters), count: String(count) })
+          .setParameters({
+            filters: JSON.stringify(filters),
+            count: String(count),
+            total: String(count),
+            capped: capped ? '1' : '0'
+          })
       );
     buttons.addButton(deleteBtn);
   }
@@ -107,9 +115,11 @@ function buildPreviewCard(filters, count) {
     .build();
 }
 
-function buildConfirmCard(filters, count) {
+function buildConfirmCard(filters, count, total, capped) {
+  total = total || count;
+  const countText = capped ? count.toLocaleString() + '+' : count.toLocaleString();
   const warning = CardService.newTextParagraph().setText(
-    'You are about to move <b>' + count.toLocaleString() + '</b> email thread' +
+    'You are about to move <b>' + countText + '</b> email thread' +
     (count === 1 ? '' : 's') + ' to <b>Trash</b>. ' +
     'Trashed mail is recoverable for 30 days, then permanently deleted by Gmail.'
   );
@@ -121,7 +131,11 @@ function buildConfirmCard(filters, count) {
     .setOnClickAction(
       CardService.newAction()
         .setFunctionName('onDeleteConfirm')
-        .setParameters({ filters: JSON.stringify(filters) })
+        .setParameters({
+          filters: JSON.stringify(filters),
+          total: String(total),
+          deletedSoFar: '0'
+        })
     );
 
   const cancel = CardService.newTextButton()
@@ -138,31 +152,47 @@ function buildConfirmCard(filters, count) {
     .build();
 }
 
-function buildResultCard(filters, result) {
+function buildResultCard(filters, result, total, deletedSoFar) {
+  total = Number(total) || (result.deleted + result.remaining);
+  deletedSoFar = (Number(deletedSoFar) || 0) + result.deleted;
+  const remaining = result.remaining;
+  const remainingCapped = result.remainingCapped;
+  const isDone = remaining === 0;
+  const remainingText = remainingCapped
+    ? remaining.toLocaleString() + '+'
+    : remaining.toLocaleString();
+
   const lines = [];
-  lines.push('Moved <b>' + result.deleted.toLocaleString() + '</b> thread' +
-             (result.deleted === 1 ? '' : 's') + ' to Trash.');
+  lines.push('Trashed <b>' + deletedSoFar.toLocaleString() + '</b> of <b>' +
+             total.toLocaleString() + '</b> thread' + (total === 1 ? '' : 's') +
+             (isDone ? '.' : ' so far.'));
+
   if (result.timedOut) {
-    lines.push('Hit Apps Script\'s 6-minute limit before finishing.');
+    lines.push('This batch hit the time limit — click <b>Continue</b> to keep going.');
   }
-  if (result.remaining > 0) {
-    lines.push('<b>' + result.remaining.toLocaleString() + '</b> matching thread' +
-               (result.remaining === 1 ? '' : 's') + ' still remain.');
+  if (remaining > 0) {
+    lines.push('<b>' + remainingText + '</b> still match the filter.');
+  } else {
+    lines.push('Refresh Gmail to update the inbox list.');
   }
 
   const section = CardService.newCardSection()
     .addWidget(CardService.newTextParagraph().setText(lines.join('<br><br>')));
 
   const buttons = CardService.newButtonSet();
-  if (result.remaining > 0) {
+  if (remaining > 0) {
     buttons.addButton(
       CardService.newTextButton()
-        .setText('Run again')
+        .setText('Continue (' + remainingText + ' left)')
         .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
         .setOnClickAction(
           CardService.newAction()
             .setFunctionName('onDeleteConfirm')
-            .setParameters({ filters: JSON.stringify(filters) })
+            .setParameters({
+              filters: JSON.stringify(filters),
+              total: String(total),
+              deletedSoFar: String(deletedSoFar)
+            })
         )
     );
   }
@@ -174,7 +204,7 @@ function buildResultCard(filters, result) {
   section.addWidget(buttons);
 
   return CardService.newCardBuilder()
-    .setHeader(CardService.newCardHeader().setTitle('Done'))
+    .setHeader(CardService.newCardHeader().setTitle(isDone ? 'Done' : 'Trashing...'))
     .addSection(section)
     .build();
 }

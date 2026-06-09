@@ -13,8 +13,8 @@ function onPreviewClick(e) {
     return notify_('Enter at least one filter first.');
   }
   try {
-    const count = countMatchingThreads_(filters);
-    return pushCard_(buildPreviewCard(filters, count));
+    const c = countMatchingThreads_(filters);
+    return pushCard_(buildPreviewCard(filters, c.count, c.capped));
   } catch (err) {
     return notify_('Error: ' + err.message);
   }
@@ -30,16 +30,22 @@ function onDeletePrompt(e) {
   const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
   const filters = JSON.parse(params.filters || '{}');
   const count = Number(params.count || 0);
-  return pushCard_(buildConfirmCard(filters, count));
+  const total = Number(params.total || count);
+  const capped = params.capped === '1';
+  return pushCard_(buildConfirmCard(filters, count, total, capped));
 }
 
 function onDeleteConfirm(e) {
   const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
   const filters = JSON.parse(params.filters || '{}');
+  const total = Number(params.total || 0);
+  const deletedSoFar = Number(params.deletedSoFar || 0);
   try {
     const result = deleteMatchingThreads_(filters);
     return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().updateCard(buildResultCard(filters, result)))
+      .setNavigation(CardService.newNavigation().updateCard(
+        buildResultCard(filters, result, total, deletedSoFar)
+      ))
       .setNotification(CardService.newNotification()
         .setText('Trashed ' + result.deleted + ' thread' + (result.deleted === 1 ? '' : 's') + '. Refresh Gmail to update the list.'))
       .setStateChanged(true)

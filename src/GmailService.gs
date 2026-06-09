@@ -4,7 +4,7 @@
  */
 
 var BATCH_SIZE = 500;
-var MAX_RUN_MS = 5 * 60 * 1000;
+var MAX_RUN_MS = 4 * 60 * 1000;
 
 function buildQuery_(filters) {
   var parts = [];
@@ -16,11 +16,25 @@ function buildQuery_(filters) {
   return parts.join(' ');
 }
 
+var COUNT_HARD_CAP = 10000;
+
 function countMatchingThreads_(filters) {
   const q = buildQuery_(filters);
-  if (!q) return 0;
-  const res = Gmail.Users.Threads.list('me', { q: q, maxResults: 1 });
-  return res.resultSizeEstimate || 0;
+  if (!q) return { count: 0, capped: false };
+  let total = 0;
+  let pageToken;
+  do {
+    const res = Gmail.Users.Threads.list('me', {
+      q: q,
+      maxResults: BATCH_SIZE,
+      pageToken: pageToken,
+      fields: 'nextPageToken,threads/id'
+    });
+    total += (res.threads || []).length;
+    if (total >= COUNT_HARD_CAP) return { count: COUNT_HARD_CAP, capped: true };
+    pageToken = res.nextPageToken;
+  } while (pageToken);
+  return { count: total, capped: false };
 }
 
 function deleteMatchingThreads_(filters) {
@@ -55,6 +69,21 @@ function deleteMatchingThreads_(filters) {
     pageToken = page.nextPageToken;
   } while (pageToken && !timedOut);
 
-  const remaining = countMatchingThreads_(filters);
-  return { deleted: deleted, remaining: remaining, timedOut: timedOut };
+  let remaining = 0;
+  let remainingCapped = false;
+  try {
+    const c = countMatchingThreads_(filters);
+    remaining = c.count;
+    remainingCapped = c.capped;
+  } catch (e) {
+    // Recount may itself exceed the wall on huge inboxes — assume more remain.
+    remaining = timedOut ? Math.max(1, BATCH_SIZE) : 0;
+    remainingCapped = timedOut;
+  }
+  return {
+    deleted: deleted,
+    remaining: remaining,
+    remainingCapped: remainingCapped,
+    timedOut: timedOut
+  };
 }
