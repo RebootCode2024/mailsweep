@@ -36,7 +36,16 @@ function onPreviewClick(e) {
   if (!buildQuery_(filters)) {
     return notify_('Enter at least one filter first.');
   }
+  const dateErr = validateDateRange_(filters);
+  if (dateErr) return notify_(dateErr);
   return runPreview_(filters);
+}
+
+function validateDateRange_(filters) {
+  if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) {
+    return '"Received after" is later than "Received before" — swap the dates.';
+  }
+  return '';
 }
 
 function onPresetClick(e) {

@@ -10,12 +10,44 @@ var COUNT_HARD_CAP = 10000;       // stop counting beyond this; show "10,000+"
 
 function buildQuery_(filters) {
   var parts = [];
-  if (filters.sender)   parts.push('from:' + filters.sender);
-  if (filters.subject)  parts.push('subject:' + filters.subject);
-  if (filters.label)    parts.push('label:' + filters.label);
-  if (filters.dateFrom) parts.push('after:' + filters.dateFrom);
-  if (filters.dateTo)   parts.push('before:' + filters.dateTo);
+  var sender   = cleanFilterValue_(filters.sender,  'from:');
+  var subject  = cleanFilterValue_(filters.subject, 'subject:');
+  var label    = cleanFilterValue_(filters.label,   'label:');
+  var dateFrom = (filters.dateFrom || '').trim();
+  var dateTo   = (filters.dateTo   || '').trim();
+
+  if (sender)  parts.push('from:' + quoteIfNeeded_(sender));
+  if (subject) parts.push('subject:' + quoteIfNeeded_(subject));
+  if (label)   parts.push('label:' + labelToken_(label));
+  if (dateFrom) parts.push('after:' + dateFrom);
+  if (dateTo)   parts.push('before:' + dateTo);
   return parts.join(' ');
+}
+
+// Strip surrounding whitespace and an accidental leading operator prefix
+// (e.g. user types "from:foo@bar.com" in the From field).
+function cleanFilterValue_(raw, prefix) {
+  var v = (raw || '').trim();
+  if (!v) return '';
+  var lower = v.toLowerCase();
+  if (lower.indexOf(prefix) === 0) v = v.substring(prefix.length).trim();
+  // Strip surrounding quotes — we'll re-add if needed.
+  if (v.length >= 2 && v.charAt(0) === '"' && v.charAt(v.length - 1) === '"') {
+    v = v.substring(1, v.length - 1);
+  }
+  return v;
+}
+
+// Wrap in quotes if value contains whitespace; escape internal quotes.
+function quoteIfNeeded_(v) {
+  if (/\s/.test(v)) return '"' + v.replace(/"/g, '\\"') + '"';
+  return v;
+}
+
+// Gmail label: spaces become dashes (Gmail's own convention), or quote.
+function labelToken_(v) {
+  if (/\s/.test(v)) return '"' + v.replace(/"/g, '\\"') + '"';
+  return v;
 }
 
 function countMatchingThreads_(filters) {
@@ -72,7 +104,7 @@ function deleteMatchingThreads_(filters) {
         }, 'me');
         deleted += chunk.length;
       } catch (e) {
-        // batchModify is all-or-nothing; if it fails, leave them
+        console.error('batchModify failed: ' + (e && e.message || e));
       }
     }
     pageToken = page.nextPageToken;
@@ -87,7 +119,9 @@ function deleteMatchingThreads_(filters) {
       }, 'me');
       deleted += buffer.length;
       buffer = [];
-    } catch (e) {}
+    } catch (e) {
+      console.error('batchModify (flush) failed: ' + (e && e.message || e));
+    }
   }
 
   // Fast recount: one list call only, so we never burn time after a huge delete.
