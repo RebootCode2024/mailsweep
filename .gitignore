@@ -3,6 +3,7 @@
 node_modules/
 .env
 .env.local
+mailsweep-secrets.txt
 .DS_Store
 Thumbs.db
 *.log
