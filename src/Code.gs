@@ -135,7 +135,12 @@ function onDeleteConfirm(e) {
 
 function onBackToHome(e) {
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot())
+    .setNavigation(
+      CardService.newNavigation()
+        .popToRoot()
+        .updateCard(buildFilterCard())
+    )
+    .setStateChanged(true)
     .build();
 }
 
