@@ -21,7 +21,9 @@ var ICON = {
   trash:     'https://api.iconify.design/material-symbols/delete-sweep-rounded.svg?color=%23d93025',
   check:     'https://api.iconify.design/material-symbols/check-circle-rounded.svg?color=%231e8e3e',
   warn:      'https://api.iconify.design/material-symbols/warning-rounded.svg?color=%23f9ab00',
-  none:      'https://api.iconify.design/material-symbols/inbox-rounded.svg?color=%235f6368'
+  none:      'https://api.iconify.design/material-symbols/inbox-rounded.svg?color=%235f6368',
+  lock:      'https://api.iconify.design/material-symbols/lock-rounded.svg?color=%231a73e8',
+  sparkle:   'https://api.iconify.design/material-symbols/auto-awesome-rounded.svg?color=%23f9ab00'
 };
 
 function buildFilterCard() {
@@ -410,6 +412,52 @@ function buildBackgroundCard_(state) {
     .setHeader(CardService.newCardHeader().setTitle(title))
     .addSection(heroSection)
     .addSection(buttonSection)
+    .build();
+}
+
+function buildPaywallCard_(verdict) {
+  const isTrialOver = verdict.status === 'trial_over';
+  const title = isTrialOver ? 'Trial ended' : 'Daily limit hit';
+  const heroLabel = isTrialOver
+    ? 'Unlock unlimited deletes for $3'
+    : 'Free trial: 1 delete per day';
+
+  const hero = CardService.newDecoratedText()
+    .setStartIcon(CardService.newIconImage().setIconUrl(isTrialOver ? ICON.lock : ICON.clock))
+    .setText('<font color="' + BRAND_BLUE + '"><b>' + heroLabel + '</b></font>')
+    .setBottomLabel(verdict.message || 'Upgrade to keep sweeping.')
+    .setWrapText(true);
+
+  const bullets = CardService.newTextParagraph()
+    .setText(
+      '<b>What you get with $3 lifetime:</b><br>' +
+      '✓ Unlimited deletes, unlimited filters<br>' +
+      '✓ One-time payment, no subscription<br>' +
+      '✓ Same Gmail address — no key to enter<br>' +
+      '✓ 30-day Gumroad refund guarantee'
+    );
+
+  const buy = CardService.newTextButton()
+    .setText('Buy for $3')
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+    .setBackgroundColor(BRAND_BLUE)
+    .setOpenLink(
+      CardService.newOpenLink()
+        .setUrl(getCheckoutUrl_())
+        .setOpenAs(CardService.OpenAs.FULL_SIZE)
+        .setOnClose(CardService.OnClose.RELOAD)
+    );
+
+  const back = CardService.newTextButton()
+    .setText('Maybe later')
+    .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'));
+
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle(title))
+    .addSection(CardService.newCardSection().addWidget(hero).addWidget(bullets))
+    .addSection(CardService.newCardSection().addWidget(
+      CardService.newButtonSet().addButton(buy).addButton(back)
+    ))
     .build();
 }
 

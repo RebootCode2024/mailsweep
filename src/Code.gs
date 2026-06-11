@@ -83,6 +83,19 @@ function onDeleteConfirm(e) {
   const filters = JSON.parse(params.filters || '{}');
   const total = Number(params.total || 0);
   const deletedSoFar = Number(params.deletedSoFar || 0);
+
+  // Paywall check — only on the FIRST run of a sweep (when deletedSoFar=0).
+  // Continuations of an in-progress sweep skip validation; the user already
+  // consumed their quota when they kicked it off.
+  if (deletedSoFar === 0) {
+    const verdict = validateCurrentUser_();
+    if (!verdict.allowed) {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().updateCard(buildPaywallCard_(verdict)))
+        .build();
+    }
+  }
+
   try {
     const result = deleteMatchingThreads_(filters);
     const newDeletedSoFar = deletedSoFar + result.deleted;
