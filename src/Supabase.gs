@@ -12,11 +12,21 @@
  *   GUMROAD_CHECKOUT_URL   — full URL of the Gumroad product checkout
  */
 
+// Comp'd accounts — friends, testers, the founder. Always allowed, never charged.
+var WHITELIST_EMAILS = [
+  'haranddev@gmail.com'
+];
+
 function validateCurrentUser_() {
   const email = Session.getActiveUser().getEmail();
   const props = PropertiesService.getScriptProperties();
   const url = props.getProperty('SUPABASE_VALIDATE_URL');
   const secret = props.getProperty('SUPABASE_SECRET_KEY');
+
+  // Whitelist bypass — skip Supabase entirely.
+  if (email && WHITELIST_EMAILS.indexOf(email.toLowerCase()) !== -1) {
+    return { allowed: true, status: 'paid' };
+  }
 
   // If paywall isn't wired up yet (dev/test), fail-open and allow.
   if (!url || !secret) {

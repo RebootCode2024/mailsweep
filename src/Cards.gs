@@ -10,6 +10,7 @@ var WARN_AMBER = '#f9ab00';
 
 // Iconify SVGs — colored to match brand
 var ICON = {
+  breakdown: 'https://api.iconify.design/material-symbols/groups-2-rounded.svg?color=%231a73e8',
   promo:     'https://api.iconify.design/material-symbols/campaign-rounded.svg?color=%231a73e8',
   social:    'https://api.iconify.design/material-symbols/groups-rounded.svg?color=%231a73e8',
   updates:   'https://api.iconify.design/material-symbols/notifications-active-rounded.svg?color=%231a73e8',
@@ -144,9 +145,11 @@ function buildPreviewButtonSection_() {
     .addWidget(CardService.newButtonSet().addButton(button));
 }
 
-function buildPreviewCard(filters, count, capped) {
+function buildPreviewCard(filters, count, capped, estimated) {
   const query = buildQuery_(filters);
-  const countText = capped ? count.toLocaleString() + '+' : count.toLocaleString();
+  const countText = capped
+    ? count.toLocaleString() + '+'
+    : (estimated ? '~' + count.toLocaleString() : count.toLocaleString());
 
   const heroSection = CardService.newCardSection();
   if (count === 0) {
@@ -161,7 +164,7 @@ function buildPreviewCard(filters, count, capped) {
       CardService.newDecoratedText()
         .setStartIcon(CardService.newIconImage().setIconUrl(ICON.email))
         .setText('<font color="' + BRAND_BLUE + '"><b>' + countText + '</b></font> matching emails')
-        .setBottomLabel('Ready to clean up')
+        .setBottomLabel(estimated ? 'Estimate from Gmail index — exact count after sweep' : 'Ready to clean up')
     );
   }
 
@@ -199,6 +202,29 @@ function buildPreviewCard(filters, count, capped) {
       .setText('Back')
       .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'))
   );
+  if (count > 0) {
+    buttonSection.addWidget(
+      CardService.newTextParagraph()
+        .setText('<font color="#5f6368">Want to spare a few senders?</font>')
+    );
+    buttonSection.addWidget(
+      CardService.newButtonSet().addButton(
+        CardService.newTextButton()
+          .setText('  Review by sender  →  ')
+          .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+          .setBackgroundColor(BRAND_BLUE)
+          .setOnClickAction(
+            CardService.newAction()
+              .setFunctionName('onAnalyzeSenders')
+              .setParameters({
+                filters: JSON.stringify(filters),
+                totalCount: String(count),
+                capped: capped ? '1' : '0'
+              })
+          )
+      )
+    );
+  }
   buttonSection.addWidget(previewButtons);
 
   return CardService.newCardBuilder()
@@ -206,6 +232,108 @@ function buildPreviewCard(filters, count, capped) {
     .addSection(heroSection)
     .addSection(buttonSection)
     .build();
+}
+
+function truncate_(s, n) {
+  s = String(s || '');
+  return s.length > n ? s.substring(0, n - 1) + '…' : s;
+}
+
+function escapeHtml_(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function buildSenderBreakdownCard_(filters, breakdown, totalCount, totalCapped) {
+  const senders = (breakdown.senders || []).slice(0, 10);
+  const totalText = totalCapped ? totalCount.toLocaleString() + '+' : totalCount.toLocaleString();
+
+  const card = CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('Review by sender'));
+
+  const heroSection = CardService.newCardSection().addWidget(
+    CardService.newDecoratedText()
+      .setStartIcon(CardService.newIconImage().setIconUrl(ICON.breakdown))
+      .setText('<font color="' + BRAND_BLUE + '"><b>' + totalText + '</b></font> emails · top senders')
+      .setBottomLabel(breakdown.capped
+        ? 'Sampled first ' + breakdown.scanned.toLocaleString() + ' messages — counts are estimates'
+        : 'Scanned all ' + breakdown.scanned.toLocaleString() + ' messages')
+      .setWrapText(true)
+  );
+  card.addSection(heroSection);
+
+  if (senders.length === 0) {
+    heroSection.addWidget(
+      CardService.newTextParagraph()
+        .setText('<font color="#5f6368">Couldn’t group these by sender. Go back and use the normal sweep.</font>')
+    );
+    card.addSection(
+      CardService.newCardSection().addWidget(
+        CardService.newButtonSet().addButton(
+          CardService.newTextButton()
+            .setText('Back')
+            .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'))
+        )
+      )
+    );
+    return card.build();
+  }
+
+  const sendersSection = CardService.newCardSection()
+    .setHeader('<b>UNTICK SENDERS TO SPARE</b>');
+  const domains = [];
+  for (let i = 0; i < senders.length; i++) {
+    const s = senders[i];
+    domains.push(s.domain);
+    const countDisplay = (s.estimated ? '~' : '') + s.count.toLocaleString();
+    sendersSection.addWidget(
+      CardService.newDecoratedText()
+        .setText('<b>' + escapeHtml_(truncate_(s.name, 38)) + '</b>')
+        .setBottomLabel(escapeHtml_(s.domain) + ' · ' + countDisplay + ' email' + (s.count === 1 ? '' : 's'))
+        .setWrapText(true)
+        .setSwitchControl(
+          CardService.newSwitch()
+            .setFieldName('include_' + s.domain)
+            .setValue('1')
+            .setSelected(true)
+        )
+    );
+  }
+  if (breakdown.senders.length > 10) {
+    sendersSection.addWidget(
+      CardService.newTextParagraph()
+        .setText('<font color="#5f6368">Showing top 10 of ' + breakdown.senders.length +
+                 ' senders. Mail from senders outside the top 10 will still be trashed.</font>')
+    );
+  }
+  card.addSection(sendersSection);
+
+  const actionSection = CardService.newCardSection();
+  actionSection.addWidget(
+    CardService.newButtonSet().addButton(
+      CardService.newTextButton()
+        .setText('Trash selected senders  →')
+        .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+        .setBackgroundColor(DANGER_RED)
+        .setOnClickAction(
+          CardService.newAction()
+            .setFunctionName('onSweepSelectedSenders')
+            .setParameters({
+              filters: JSON.stringify(filters),
+              domains: JSON.stringify(domains)
+            })
+        )
+    ).addButton(
+      CardService.newTextButton()
+        .setText('Back')
+        .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'))
+    )
+  );
+  card.addSection(actionSection);
+
+  return card.build();
 }
 
 function buildConfirmCard(filters, count, total, capped) {

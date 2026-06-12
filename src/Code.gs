@@ -57,7 +57,52 @@ function onPresetClick(e) {
 function runPreview_(filters) {
   try {
     const c = countMatchingThreads_(filters);
-    return pushCard_(buildPreviewCard(filters, c.count, c.capped));
+    return pushCard_(buildPreviewCard(filters, c.count, c.capped, c.estimated));
+  } catch (err) {
+    return notify_('Error: ' + err.message);
+  }
+}
+
+function onAnalyzeSenders(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const filters = JSON.parse(params.filters || '{}');
+  const totalCount = Number(params.totalCount || 0);
+  const totalCapped = params.capped === '1';
+  try {
+    const breakdown = analyzeSenders_(filters, totalCount);
+    return pushCard_(buildSenderBreakdownCard_(filters, breakdown, totalCount, totalCapped));
+  } catch (err) {
+    return notify_('Error analyzing senders: ' + err.message);
+  }
+}
+
+function onSweepSelectedSenders(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const filters = JSON.parse(params.filters || '{}');
+  const domains = JSON.parse(params.domains || '[]');
+  const inputs = (e && e.commonEventObject && e.commonEventObject.formInputs) || {};
+
+  const excluded = [];
+  let keptCount = 0;
+  for (let i = 0; i < domains.length; i++) {
+    const d = domains[i];
+    const f = inputs['include_' + d];
+    const on = !!(f && f.stringInputs && f.stringInputs.value && f.stringInputs.value[0]);
+    if (on) keptCount++;
+    else excluded.push(d);
+  }
+
+  if (keptCount === 0 && excluded.length === domains.length) {
+    return notify_('All senders are unticked — nothing to trash.');
+  }
+
+  const augmented = Object.assign({}, filters, {
+    excludeDomains: (filters.excludeDomains || []).concat(excluded)
+  });
+
+  try {
+    const c = countMatchingThreads_(augmented);
+    return pushCard_(buildConfirmCard(augmented, c.count, c.count, c.capped || c.estimated));
   } catch (err) {
     return notify_('Error: ' + err.message);
   }
