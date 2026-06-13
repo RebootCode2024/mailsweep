@@ -9,3 +9,5 @@ Thumbs.db
 *.log
 .idea/
 .vscode/
+
+supabase/.temp/

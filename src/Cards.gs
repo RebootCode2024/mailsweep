@@ -547,7 +547,7 @@ function buildPaywallCard_(verdict) {
   const isTrialOver = verdict.status === 'trial_over';
   const title = isTrialOver ? 'Trial ended' : 'Daily limit hit';
   const heroLabel = isTrialOver
-    ? 'Unlock unlimited deletes for $3'
+    ? 'Unlock unlimited deletes for $5'
     : 'Free trial: 1 delete per day';
 
   const hero = CardService.newDecoratedText()
@@ -558,15 +558,14 @@ function buildPaywallCard_(verdict) {
 
   const bullets = CardService.newTextParagraph()
     .setText(
-      '<b>What you get with $3 lifetime:</b><br>' +
+      '<b>What you get with $5 lifetime:</b><br>' +
       '✓ Unlimited deletes, unlimited filters<br>' +
       '✓ One-time payment, no subscription<br>' +
-      '✓ Same Gmail address — no key to enter<br>' +
-      '✓ 30-day Gumroad refund guarantee'
+      '✓ Same Gmail address — no key to enter'
     );
 
   const buy = CardService.newTextButton()
-    .setText('Buy for $3')
+    .setText('Buy for $5')
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
     .setBackgroundColor(BRAND_BLUE)
     .setOpenLink(

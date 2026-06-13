@@ -32,17 +32,17 @@ Gmail's web UI only lets you select 50 emails at a time. Deleting thousands of e
 | **Free Trial** | 1 delete/day for 3 days |
 | **Same-day second attempt** | Blocked with upgrade prompt |
 | **After day 3 (unpaid)** | Permanently blocked on that email ID |
-| **Paid** | $3 one-time lifetime payment, unlimited usage |
+| **Paid** | $5 one-time lifetime payment, unlimited usage |
 
 ### Popup Messages to Show Users
 
 **When they try a second delete on the same day:**
-> "You've already used your free delete today. Come back tomorrow — or unlock unlimited access for just $3."
+> "You've already used your free delete today. Come back tomorrow — or unlock unlimited access for just $5."
 
 **When their 3-day trial ends:**
-> "Your 3-day free trial is over. Pay $3 once and clean your inbox forever."
+> "Your 3-day free trial is over. Pay $5 once and clean your inbox forever."
 
-Both popups must include a direct **"Buy for $3"** button linking to Gumroad checkout.
+Both popups must include a direct **"Buy for $5"** button linking to Gumroad checkout.
 
 ---
 
@@ -68,7 +68,7 @@ Both popups must include a direct **"Buy for $3"** button linking to Gumroad che
 | UI | Apps Script Card Service |
 | Email deletion | Gmail API (via Apps Script) |
 | User tracking + license validation | Supabase (edge function) |
-| Payments | Gumroad ($3 one-time) |
+| Payments | Gumroad ($5 one-time) |
 | Landing page | Plain HTML, hosted on GitHub Pages |
 | Distribution | Google Workspace Marketplace |
 

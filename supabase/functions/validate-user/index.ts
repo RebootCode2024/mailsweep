@@ -24,7 +24,7 @@ const corsHeaders = {
 };
 
 const TRIAL_DAYS = 3;
-const PRICE_TEXT = "$3";
+const PRICE_TEXT = "$5";
 
 export default {
   fetch: withSupabase({ auth: ["secret"] }, async (req, ctx) => {
