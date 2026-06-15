@@ -213,3 +213,158 @@ function notify_(text) {
     .setNotification(CardService.newNotification().setText(text))
     .build();
 }
+
+// ============================================================
+// Recurring sweeps — handlers
+// ============================================================
+
+function onSaveRecipePrompt(e) {
+  const filters = readFilters_(e);
+  if (!buildQuery_(filters)) {
+    return notify_('Enter at least one filter first.');
+  }
+  const dateErr = validateDateRange_(filters);
+  if (dateErr) return notify_(dateErr);
+
+  const verdict = validateCurrentUser_();
+  if (!verdict.allowed || verdict.status !== 'paid') {
+    return pushCard_(buildRecurringPaywallCard_(verdict));
+  }
+
+  return pushCard_(buildSaveRecipeCard_(filters, 'weekly'));
+}
+
+function onSaveRecipeFromResult(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const filters = JSON.parse(params.filters || '{}');
+
+  const verdict = validateCurrentUser_();
+  if (!verdict.allowed || verdict.status !== 'paid') {
+    return pushCard_(buildRecurringPaywallCard_(verdict));
+  }
+
+  return pushCard_(buildSaveRecipeCard_(filters, 'weekly'));
+}
+
+function onSaveRecipeConfirm(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const filters = JSON.parse(params.filters || '{}');
+  const inputs = (e && e.commonEventObject && e.commonEventObject.formInputs) || {};
+  const name = getStringInput_(inputs, 'recipe_name') || suggestRecipeName_(filters);
+  const cadence = getStringInput_(inputs, 'recipe_cadence') || 'weekly';
+  const digestEnabled = getSwitchInput_(inputs, 'recipe_digest');
+
+  const verdict = validateCurrentUser_();
+  if (!verdict.allowed || verdict.status !== 'paid') {
+    return pushCard_(buildRecurringPaywallCard_(verdict));
+  }
+
+  try {
+    createRecipe(name, filters, cadence, digestEnabled);
+  } catch (err) {
+    return notify_('Could not save: ' + (err && err.message || err));
+  }
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(
+      CardService.newNavigation()
+        .popToRoot()
+        .updateCard(buildFilterCard())
+    )
+    .setNotification(CardService.newNotification().setText('Saved — runs ' + cadence + '.'))
+    .setStateChanged(true)
+    .build();
+}
+
+function onRecipeOpen(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const recipe = getRecipe_(params.recipeId);
+  if (!recipe) return notify_('Recipe not found.');
+  return pushCard_(buildRecipeEditCard_(recipe));
+}
+
+function onRecipeRunNow(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const recipeId = params.recipeId;
+
+  const verdict = validateCurrentUser_();
+  if (!verdict.allowed || verdict.status !== 'paid') {
+    return pushCard_(buildRecurringPaywallCard_(verdict));
+  }
+
+  let out;
+  try {
+    out = runRecipeNow_(recipeId);
+  } catch (err) {
+    return notify_('Run failed: ' + (err && err.message || err));
+  }
+  if (!out) return notify_('Recipe not found.');
+
+  const r = out.recipe;
+  const r2 = getRecipe_(recipeId);
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(buildRecipeEditCard_(r2 || r)))
+    .setNotification(CardService.newNotification()
+      .setText('Trashed ' + (out.result.deleted || 0) + '. Check your inbox + digest email.'))
+    .setStateChanged(true)
+    .build();
+}
+
+function onRecipeToggle(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const enable = params.enable === '1';
+  const updated = setRecipeEnabled(params.recipeId, enable);
+  if (!updated) return notify_('Recipe not found.');
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(buildRecipeEditCard_(updated)))
+    .setStateChanged(true)
+    .build();
+}
+
+function onRecipeSaveEdits(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  const inputs = (e && e.commonEventObject && e.commonEventObject.formInputs) || {};
+  const recipeId = params.recipeId;
+  const newName = getStringInput_(inputs, 'recipe_new_name');
+  const newCadence = getStringInput_(inputs, 'recipe_new_cadence');
+  const newDigest = getSwitchInput_(inputs, 'recipe_new_digest');
+
+  let recipe = getRecipe_(recipeId);
+  if (!recipe) return notify_('Recipe not found.');
+
+  let changed = false;
+  if (newName && newName !== recipe.name) {
+    renameRecipe(recipeId, newName);
+    changed = true;
+  }
+  if (newCadence && newCadence !== recipe.cadence) {
+    changeRecipeCadence(recipeId, newCadence);
+    changed = true;
+  }
+  if (newDigest !== !!recipe.digestEnabled) {
+    setRecipeDigest(recipeId, newDigest);
+    changed = true;
+  }
+
+  recipe = getRecipe_(recipeId);
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(buildRecipeEditCard_(recipe)))
+    .setNotification(CardService.newNotification()
+      .setText(changed ? 'Saved.' : 'No changes.'))
+    .setStateChanged(true)
+    .build();
+}
+
+function onRecipeDelete(e) {
+  const params = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  deleteRecipeAndTrigger(params.recipeId);
+  return CardService.newActionResponseBuilder()
+    .setNavigation(
+      CardService.newNavigation()
+        .popToRoot()
+        .updateCard(buildFilterCard())
+    )
+    .setNotification(CardService.newNotification().setText('Recipe deleted.'))
+    .setStateChanged(true)
+    .build();
+}

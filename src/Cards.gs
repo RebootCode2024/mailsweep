@@ -24,16 +24,24 @@ var ICON = {
   warn:      'https://api.iconify.design/material-symbols/warning-rounded.svg?color=%23f9ab00',
   none:      'https://api.iconify.design/material-symbols/inbox-rounded.svg?color=%235f6368',
   lock:      'https://api.iconify.design/material-symbols/lock-rounded.svg?color=%231a73e8',
-  sparkle:   'https://api.iconify.design/material-symbols/auto-awesome-rounded.svg?color=%23f9ab00'
+  sparkle:   'https://api.iconify.design/material-symbols/auto-awesome-rounded.svg?color=%23f9ab00',
+  repeat:    'https://api.iconify.design/material-symbols/repeat-rounded.svg?color=%231a73e8',
+  schedule:  'https://api.iconify.design/material-symbols/event-repeat-rounded.svg?color=%231a73e8',
+  paused:    'https://api.iconify.design/material-symbols/pause-circle-rounded.svg?color=%235f6368'
 };
 
 function buildFilterCard() {
-  return CardService.newCardBuilder()
+  const card = CardService.newCardBuilder()
     .setHeader(
       CardService.newCardHeader()
         .setTitle('MailSweep')
         .setSubtitle('Clean your inbox in seconds')
-    )
+    );
+
+  const recipesSection = buildHomepageRecipesSection_();
+  if (recipesSection) card.addSection(recipesSection);
+
+  return card
     .addSection(buildPresetsSection_())
     .addSection(buildCustomFilterSection_())
     .addSection(buildDateRangeSection_())
@@ -134,15 +142,19 @@ function buildPreviewButtonSection_() {
   const hint = CardService.newTextParagraph()
     .setText('<font color="#5f6368">See exactly what will be trashed before you delete anything.</font>');
 
-  const button = CardService.newTextButton()
+  const previewBtn = CardService.newTextButton()
     .setText('  Preview matches  →  ')
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
     .setBackgroundColor(BRAND_BLUE)
     .setOnClickAction(CardService.newAction().setFunctionName('onPreviewClick'));
 
+  const saveRecurringBtn = CardService.newTextButton()
+    .setText('Save as recurring')
+    .setOnClickAction(CardService.newAction().setFunctionName('onSaveRecipePrompt'));
+
   return CardService.newCardSection()
     .addWidget(hint)
-    .addWidget(CardService.newButtonSet().addButton(button));
+    .addWidget(CardService.newButtonSet().addButton(previewBtn).addButton(saveRecurringBtn));
 }
 
 function buildPreviewCard(filters, count, capped, estimated) {
@@ -243,7 +255,9 @@ function escapeHtml_(s) {
   return String(s || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function buildSenderBreakdownCard_(filters, breakdown, totalCount, totalCapped) {
@@ -449,6 +463,24 @@ function buildResultCard(filters, result, total, deletedSoFar) {
   );
   buttonSection.addWidget(resultButtons);
 
+  if (isDone && deletedSoFar > 0) {
+    buttonSection.addWidget(
+      CardService.newTextParagraph()
+        .setText('<font color="#5f6368">Want this to run automatically?</font>')
+    );
+    buttonSection.addWidget(
+      CardService.newButtonSet().addButton(
+        CardService.newTextButton()
+          .setText('Run this weekly  ↻')
+          .setOnClickAction(
+            CardService.newAction()
+              .setFunctionName('onSaveRecipeFromResult')
+              .setParameters({ filters: JSON.stringify(filters) })
+          )
+      )
+    );
+  }
+
   return CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle(isDone ? 'All clean' : 'Trashing...'))
     .addSection(heroSection)
@@ -604,6 +636,12 @@ function getStringInput_(inputs, key) {
   return f && f.stringInputs && f.stringInputs.value && f.stringInputs.value[0] || '';
 }
 
+function getSwitchInput_(inputs, key) {
+  const f = inputs[key];
+  const v = f && f.stringInputs && f.stringInputs.value && f.stringInputs.value[0];
+  return !!v;
+}
+
 function getDateInput_(inputs, key) {
   const f = inputs[key];
   const ms = f && f.dateInput && f.dateInput.msSinceEpoch;
@@ -620,4 +658,288 @@ function oneYearAgoString_() {
   return d.getUTCFullYear() + '/' +
          String(d.getUTCMonth() + 1).padStart(2, '0') + '/' +
          String(d.getUTCDate()).padStart(2, '0');
+}
+
+// ============================================================
+// Recurring sweeps UI
+// ============================================================
+
+function buildHomepageRecipesSection_() {
+  const recipes = listRecipes_();
+  if (!recipes.length) return null;
+
+  const active = recipes.filter(function (r) { return r.enabled; }).length;
+  const headerText = active === recipes.length
+    ? '<b>RECURRING SWEEPS (' + recipes.length + ')</b>'
+    : '<b>RECURRING SWEEPS (' + active + ' active · ' + (recipes.length - active) + ' paused)</b>';
+
+  const section = CardService.newCardSection().setHeader(headerText);
+  for (let i = 0; i < recipes.length; i++) {
+    const r = recipes[i];
+    const cadenceLabel = cadenceHumanLabel_(r.cadence);
+    const last = r.lastRunAt
+      ? 'Last run ' + relativeTime_(r.lastRunAt) + ' · ' + formatNumber_(r.lastRunCount) + ' cleaned'
+      : 'Hasn’t run yet';
+    section.addWidget(
+      CardService.newDecoratedText()
+        .setStartIcon(CardService.newIconImage().setIconUrl(r.enabled ? ICON.repeat : ICON.paused))
+        .setText('<b>' + escapeHtml_(r.name) + '</b>')
+        .setBottomLabel(cadenceLabel + ' · ' + last)
+        .setWrapText(true)
+        .setOnClickAction(
+          CardService.newAction()
+            .setFunctionName('onRecipeOpen')
+            .setParameters({ recipeId: r.id })
+        )
+    );
+  }
+  return section;
+}
+
+function buildSaveRecipeCard_(filters, prefillCadence) {
+  const queryPreview = buildQuery_(filters) || '(empty)';
+  const defaultName = suggestRecipeName_(filters);
+
+  const hero = CardService.newDecoratedText()
+    .setStartIcon(CardService.newIconImage().setIconUrl(ICON.schedule))
+    .setText('<font color="' + BRAND_BLUE + '"><b>Save as recurring sweep</b></font>')
+    .setBottomLabel('Runs automatically — you get an email after each run.')
+    .setWrapText(true);
+
+  const filterRow = CardService.newDecoratedText()
+    .setTopLabel('Filter')
+    .setText(queryPreview)
+    .setWrapText(true);
+
+  const nameInput = CardService.newTextInput()
+    .setFieldName('recipe_name')
+    .setTitle('Recipe name')
+    .setValue(defaultName);
+
+  const cadencePicker = CardService.newSelectionInput()
+    .setType(CardService.SelectionInputType.RADIO_BUTTON)
+    .setTitle('How often?')
+    .setFieldName('recipe_cadence')
+    .addItem('Daily', 'daily', prefillCadence === 'daily')
+    .addItem('Weekly', 'weekly', prefillCadence !== 'daily' && prefillCadence !== 'monthly')
+    .addItem('Monthly', 'monthly', prefillCadence === 'monthly');
+
+  const digestToggle = CardService.newDecoratedText()
+    .setText('Email me after each run')
+    .setBottomLabel('Off by default — you can always check stats in the add-on.')
+    .setWrapText(true)
+    .setSwitchControl(
+      CardService.newSwitch()
+        .setFieldName('recipe_digest')
+        .setValue('1')
+        .setSelected(false)
+    );
+
+  const note = CardService.newTextParagraph()
+    .setText('<font color="#5f6368">Runs in the early morning (around 3 AM your timezone). ' +
+             'You can pause or delete this anytime.</font>');
+
+  const save = CardService.newTextButton()
+    .setText('Save recipe')
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+    .setBackgroundColor(BRAND_BLUE)
+    .setOnClickAction(
+      CardService.newAction()
+        .setFunctionName('onSaveRecipeConfirm')
+        .setParameters({ filters: JSON.stringify(filters) })
+    );
+
+  const cancel = CardService.newTextButton()
+    .setText('Cancel')
+    .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'));
+
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('New recurring sweep'))
+    .addSection(CardService.newCardSection().addWidget(hero).addWidget(filterRow))
+    .addSection(CardService.newCardSection().addWidget(nameInput).addWidget(cadencePicker).addWidget(digestToggle).addWidget(note))
+    .addSection(CardService.newCardSection().addWidget(
+      CardService.newButtonSet().addButton(save).addButton(cancel)
+    ))
+    .build();
+}
+
+function buildRecipeEditCard_(recipe) {
+  const cadenceLabel = cadenceHumanLabel_(recipe.cadence);
+  const lastRun = recipe.lastRunAt
+    ? relativeTime_(recipe.lastRunAt) + ' · ' + formatNumber_(recipe.lastRunCount) + ' cleaned'
+    : 'Hasn’t run yet';
+  const totalSwept = formatNumber_(recipe.totalSwept || 0);
+  const runCount = formatNumber_(recipe.runCount || 0);
+  const filterSummary = humanFilterSummary_(recipe.filters);
+
+  const hero = CardService.newDecoratedText()
+    .setStartIcon(CardService.newIconImage().setIconUrl(recipe.enabled ? ICON.repeat : ICON.paused))
+    .setText('<b>' + escapeHtml_(recipe.name) + '</b>')
+    .setBottomLabel(cadenceLabel + (recipe.enabled ? '' : ' · paused'))
+    .setWrapText(true);
+
+  const stats = CardService.newDecoratedText()
+    .setTopLabel('Total cleaned')
+    .setText('<b>' + totalSwept + '</b> emails over ' + runCount + ' run' + (recipe.runCount === 1 ? '' : 's'))
+    .setBottomLabel('Last run: ' + lastRun)
+    .setWrapText(true);
+
+  const filterRow = CardService.newDecoratedText()
+    .setTopLabel('Filter')
+    .setText(escapeHtml_(filterSummary))
+    .setWrapText(true);
+
+  const runNow = CardService.newTextButton()
+    .setText('Run now')
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+    .setBackgroundColor(BRAND_BLUE)
+    .setOnClickAction(
+      CardService.newAction()
+        .setFunctionName('onRecipeRunNow')
+        .setParameters({ recipeId: recipe.id })
+    );
+
+  const toggle = CardService.newTextButton()
+    .setText(recipe.enabled ? 'Pause' : 'Resume')
+    .setOnClickAction(
+      CardService.newAction()
+        .setFunctionName('onRecipeToggle')
+        .setParameters({ recipeId: recipe.id, enable: recipe.enabled ? '0' : '1' })
+    );
+
+  const renameInput = CardService.newTextInput()
+    .setFieldName('recipe_new_name')
+    .setTitle('Rename')
+    .setValue(recipe.name);
+
+  const cadencePicker = CardService.newSelectionInput()
+    .setType(CardService.SelectionInputType.RADIO_BUTTON)
+    .setTitle('Change cadence')
+    .setFieldName('recipe_new_cadence')
+    .addItem('Daily', 'daily', recipe.cadence === 'daily')
+    .addItem('Weekly', 'weekly', recipe.cadence === 'weekly')
+    .addItem('Monthly', 'monthly', recipe.cadence === 'monthly');
+
+  const digestToggle = CardService.newDecoratedText()
+    .setText('Email me after each run')
+    .setBottomLabel(recipe.digestEnabled ? 'On — digests will be sent.' : 'Off — runs silently.')
+    .setWrapText(true)
+    .setSwitchControl(
+      CardService.newSwitch()
+        .setFieldName('recipe_new_digest')
+        .setValue('1')
+        .setSelected(!!recipe.digestEnabled)
+    );
+
+  const saveEdits = CardService.newTextButton()
+    .setText('Save changes')
+    .setOnClickAction(
+      CardService.newAction()
+        .setFunctionName('onRecipeSaveEdits')
+        .setParameters({ recipeId: recipe.id })
+    );
+
+  const del = CardService.newTextButton()
+    .setText('Delete')
+    .setOnClickAction(
+      CardService.newAction()
+        .setFunctionName('onRecipeDelete')
+        .setParameters({ recipeId: recipe.id })
+    );
+
+  const back = CardService.newTextButton()
+    .setText('Back')
+    .setOnClickAction(CardService.newAction().setFunctionName('onBackToHome'));
+
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('Manage recipe'))
+    .addSection(CardService.newCardSection().addWidget(hero).addWidget(stats).addWidget(filterRow))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newButtonSet().addButton(runNow).addButton(toggle))
+    )
+    .addSection(
+      CardService.newCardSection()
+        .setHeader('<b>EDIT</b>')
+        .addWidget(renameInput)
+        .addWidget(cadencePicker)
+        .addWidget(digestToggle)
+        .addWidget(CardService.newButtonSet().addButton(saveEdits))
+    )
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(CardService.newButtonSet().addButton(del).addButton(back))
+    )
+    .build();
+}
+
+function buildRecurringPaywallCard_(verdict) {
+  const isTrialOver = verdict.status === 'trial_over';
+  const heroLabel = isTrialOver
+    ? 'Unlock unlimited deletes + recurring sweeps for $5'
+    : 'Recurring sweeps are a paid feature';
+
+  const hero = CardService.newDecoratedText()
+    .setStartIcon(CardService.newIconImage().setIconUrl(ICON.lock))
+    .setText('<font color="' + BRAND_BLUE + '"><b>' + heroLabel + '</b></font>')
+    .setBottomLabel('Set it once — MailSweep cleans your inbox while you sleep.')
+    .setWrapText(true);
+
+  const bullets = CardService.newTextParagraph()
+    .setText(
+      '<b>What you get with $5 lifetime:</b><br>' +
+      '✓ Unlimited deletes, unlimited filters<br>' +
+      '✓ Schedule recurring sweeps (daily/weekly/monthly)<br>' +
+      '✓ Email digest after every recurring run<br>' +
+      '✓ One-time payment, no subscription'
+    );
+
+  const buy = CardService.newTextButton()
+    .setText('Buy for $5')
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+    .setBackgroundColor(BRAND_BLUE)
+    .setOpenLink(
+      CardService.newOpenLink()
+        .setUrl(getCheckoutUrl_())
+        .setOpenAs(CardService.OpenAs.FULL_SIZE)
+        .setOnClose(CardService.OnClose.RELOAD)
+    );
+
+  const back = CardService.newTextButton()
+    .setText('Maybe later')
+    .setOnClickAction(CardService.newAction().setFunctionName('onBackToFilters'));
+
+  return CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('Upgrade'))
+    .addSection(CardService.newCardSection().addWidget(hero).addWidget(bullets))
+    .addSection(CardService.newCardSection().addWidget(
+      CardService.newButtonSet().addButton(buy).addButton(back)
+    ))
+    .build();
+}
+
+function suggestRecipeName_(filters) {
+  if (filters.sender) {
+    const at = filters.sender.indexOf('@');
+    const dom = at >= 0 ? filters.sender.substring(at + 1) : filters.sender;
+    return 'Clean ' + dom;
+  }
+  if (filters.label) return 'Clean ' + filters.label;
+  if (filters.subject) return 'Clean: ' + filters.subject;
+  if (filters.dateTo) return 'Clean older mail';
+  return 'Untitled sweep';
+}
+
+function relativeTime_(ms) {
+  const diff = Date.now() - Number(ms);
+  if (diff < 0) return 'just now';
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + ' min ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' hr ago';
+  const d = Math.floor(h / 24);
+  if (d < 30) return d + 'd ago';
+  const mo = Math.floor(d / 30);
+  return mo + 'mo ago';
 }
