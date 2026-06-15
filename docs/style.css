@@ -58,15 +58,10 @@ a:hover { text-decoration: underline; }
 .brand-mark {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  background: var(--brand);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
+  display: inline-block;
+  vertical-align: middle;
 }
+.brand-mark img { width: 100%; height: 100%; display: block; }
 
 .site-nav a {
   color: var(--text-muted);
