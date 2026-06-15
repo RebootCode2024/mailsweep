@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — MailSweep</title>
+  <meta name="description" content="MailSweep's privacy policy. What we access, what we store, what we don't.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">M</span>
+      <span>MailSweep</span>
+    </a>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<main class="legal">
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: 14 June 2026</p>
+
+  <p>
+    MailSweep is a Gmail sidebar add-on that helps you bulk-delete emails matching
+    filters you choose. This page explains exactly what data MailSweep touches,
+    what it stores, and what it does not.
+  </p>
+
+  <div class="callout">
+    <strong>Short version:</strong> MailSweep reads message metadata only when you
+    actively ask it to (preview or sweep), and it never copies your email content
+    anywhere. The only data we store on our servers is your Gmail address and
+    whether you have paid — that's it.
+  </div>
+
+  <h2>1. Who runs MailSweep</h2>
+  <p>
+    MailSweep is operated by an independent developer based in India. References to
+    "we," "us," and "our" in this policy mean the developer of MailSweep. Contact
+    details are at the bottom of this page.
+  </p>
+
+  <h2>2. What MailSweep can access</h2>
+  <p>
+    When you install MailSweep, Google asks you to grant the following OAuth scopes:
+  </p>
+  <ul>
+    <li><code>gmail.modify</code> — search your mailbox and move messages to Trash.</li>
+    <li><code>gmail.addons.execute</code> — run as a Gmail sidebar add-on.</li>
+    <li><code>script.scriptapp</code> — create scheduled triggers so recurring sweeps and long-running deletes can continue in the background.</li>
+    <li><code>script.external_request</code> — make HTTPS calls to our paywall validation service (described below).</li>
+    <li><code>userinfo.email</code> — read your Gmail address so MailSweep can recognize your paid status.</li>
+  </ul>
+  <p>
+    MailSweep uses these scopes only for the features it advertises. It does not
+    read, store, transmit, or share the contents of your emails.
+  </p>
+
+  <h2>3. What MailSweep does with your data</h2>
+
+  <h3>3.1 Email content</h3>
+  <p>
+    During a sweep, MailSweep asks the Gmail API for the IDs of messages that match
+    your filters and then asks Gmail to move those messages to Trash in bulk. For
+    the sender-breakdown feature, MailSweep additionally reads the <code>From</code>
+    header (and only the <code>From</code> header) of a sample of matching messages so
+    it can group them by sender domain.
+  </p>
+  <p>
+    No part of an email — subject, body, attachments, recipient list, headers other
+    than <code>From</code> — is ever copied off your Google account. Nothing is
+    transmitted to our servers or any third party.
+  </p>
+
+  <h3>3.2 Account data stored on our servers</h3>
+  <p>
+    For paywall enforcement, MailSweep stores the following on a Supabase database
+    we operate:
+  </p>
+  <ul>
+    <li>Your Gmail address (used as your license identifier).</li>
+    <li>The dates of your first use and most recent sweep (to enforce the 3-day free trial).</li>
+    <li>A boolean indicating whether you have purchased a lifetime license.</li>
+    <li>A boolean indicating whether your trial has expired.</li>
+  </ul>
+  <p>
+    That's the complete list. We do not store names, IP addresses, device info,
+    analytics events, email content, or sender details.
+  </p>
+
+  <h3>3.3 Data stored inside your own Google account</h3>
+  <p>
+    Recurring-sweep recipes (their names, filters, cadences, and run statistics)
+    are stored in your own Apps Script <code>UserProperties</code> — meaning they
+    live inside your Google account on Google's servers, not ours. We cannot see
+    them. Uninstalling the add-on removes that data.
+  </p>
+
+  <h2>4. Payments</h2>
+  <p>
+    Payments are processed by <a href="https://gumroad.com" target="_blank" rel="noopener">Gumroad</a>.
+    When you buy MailSweep, Gumroad collects your billing details, processes your
+    card, and sends us a webhook telling us which Gmail address paid. We receive
+    only your Gmail address from that webhook — no card details, no name, no
+    billing address. Gumroad's own privacy policy governs the data they collect
+    from you during checkout.
+  </p>
+
+  <h2>5. Third-party services we use</h2>
+  <ul>
+    <li><strong>Google Workspace APIs</strong> — to read message metadata and move messages to Trash, on your behalf, when you trigger a sweep.</li>
+    <li><strong>Supabase</strong> — to host the small users table described above and the paywall-check edge function.</li>
+    <li><strong>Gumroad</strong> — to process payments and send us notification of successful purchases.</li>
+  </ul>
+  <p>
+    We do not use Google Analytics, Mixpanel, Sentry, Facebook Pixel, or any other
+    tracking or telemetry service. There is no advertising network involved at any
+    layer.
+  </p>
+
+  <h2>6. Limited Use compliance</h2>
+  <p>
+    MailSweep's use of information received from Google APIs adheres to the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank" rel="noopener">Google API Services User Data Policy</a>,
+    including the Limited Use requirements. We do not transfer Google user data to
+    third parties except as necessary to provide or improve MailSweep itself, and
+    we do not use Google user data for advertising or for human-readable review
+    except with your explicit consent for support purposes.
+  </p>
+
+  <h2>7. Data retention</h2>
+  <p>
+    Your account record persists in our database for as long as the add-on is
+    installed on your Gmail account, plus a reasonable window afterwards to handle
+    refunds and chargebacks. You can request deletion at any time by emailing us
+    (see Contact below); we will erase your record within seven days.
+  </p>
+
+  <h2>8. Children</h2>
+  <p>
+    MailSweep is not directed at children under 13 and does not knowingly collect
+    information about them.
+  </p>
+
+  <h2>9. Changes to this policy</h2>
+  <p>
+    If we update this policy in a way that materially affects how data is handled,
+    we will update the "Last updated" date at the top and, for existing users,
+    surface the change inside the add-on the next time you open it.
+  </p>
+
+  <div class="contact-card">
+    <h3>Contact</h3>
+    <p>Questions, deletion requests, or anything else: <a href="mailto:imharshbhojwani@gmail.com">imharshbhojwani@gmail.com</a></p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </div>
+    <div>&copy; 2026 MailSweep</div>
+  </div>
+</footer>
+
+</body>
+</html>
