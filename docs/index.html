@@ -6,24 +6,6 @@
   <title>MailSweep — Bulk-delete Gmail emails in seconds</title>
   <meta name="description" content="A Gmail sidebar add-on that bulk-deletes thousands of emails matching a filter. $5 lifetime.">
   <link rel="stylesheet" href="style.css">
-  <!--
-    =============================================================
-    LAUNCH-DAY ACTION: paste the Marketplace install URL below.
-    Until this URL is set, the install button + price note stay
-    hidden so visitors never see a dead CTA.
-    =============================================================
-  -->
-  <script>
-    const MARKETPLACE_URL = ""; // e.g. https://workspace.google.com/marketplace/app/mailsweep/XXXXXXXXX
-    document.addEventListener("DOMContentLoaded", function () {
-      if (MARKETPLACE_URL) {
-        const cta = document.getElementById("install-cta");
-        const note = document.getElementById("install-note");
-        if (cta) { cta.href = MARKETPLACE_URL; cta.style.display = "inline-block"; }
-        if (note) { note.style.display = "block"; }
-      }
-    });
-  </script>
   <style>
     .hero {
       text-align: center;
@@ -121,8 +103,9 @@
       then trashes everything matching, with one click. No more selecting 50 at a
       time.
     </p>
-    <a id="install-cta" class="cta" href="" style="display:none">Install on Gmail — Free trial</a>
-    <span id="install-note" class="price-note" style="display:none">$5 one-time after the 3-day trial. Lifetime access.</span>
+    <!-- LAUNCH-DAY: swap href to the Marketplace install URL and change text to "Install on Gmail" -->
+    <a class="cta" href="mailto:imharshbhojwani@gmail.com?subject=Notify%20me%20when%20MailSweep%20launches&body=Add%20me%20to%20the%20launch%20list.">Notify me at launch</a>
+    <span class="price-note">$5 one-time, lifetime access — launching on Google Workspace Marketplace.</span>
   </section>
 
   <section class="features">
