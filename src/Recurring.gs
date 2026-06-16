@@ -13,7 +13,39 @@
 
 var RECIPES_KEY = 'mailsweep_recipes_v1';
 var RECIPE_HANDLER = 'runRecurringSweep';
-var MAX_RECIPES = 20;
+
+// Apps Script enforces 20 triggers per user per script. We reserve 2 slots
+// for the background-continuation handler (sweeps that take >6min) and a
+// safety buffer for transient install/uninstall races, so a user can hold
+// up to 18 recurring recipes.
+var MAX_RECIPES = 18;
+var TRIGGER_QUOTA = 20;
+
+/**
+ * Purge orphan recipe triggers — any trigger pointing at RECIPE_HANDLER
+ * that no live recipe still references. Run automatically before installing
+ * a new recipe trigger; also exposed manually for dev/recovery.
+ */
+function purgeOrphanTriggers() {
+  return purgeOrphanRecipeTriggers_();
+}
+
+function purgeOrphanRecipeTriggers_() {
+  const recipes = listRecipes_();
+  const ownedIds = {};
+  for (let i = 0; i < recipes.length; i++) {
+    if (recipes[i].triggerId) ownedIds[recipes[i].triggerId] = true;
+  }
+  const triggers = ScriptApp.getProjectTriggers();
+  let deleted = 0;
+  for (let i = 0; i < triggers.length; i++) {
+    const t = triggers[i];
+    if (t.getHandlerFunction() === RECIPE_HANDLER && !ownedIds[t.getUniqueId()]) {
+      try { ScriptApp.deleteTrigger(t); deleted++; } catch (e) { /* ignore */ }
+    }
+  }
+  return deleted;
+}
 
 // ---------- Storage CRUD ----------
 
@@ -74,6 +106,20 @@ function newRecipeId_() {
  *             monthly-on-the-1st as the simplest reliable cadence)
  */
 function installRecipeTrigger_(recipe) {
+  // Best-effort cleanup of orphan triggers before consuming a slot.
+  // Cheap, idempotent, and removes the most common "too many triggers"
+  // cause (orphans left by deleted recipes or aborted installs).
+  try { purgeOrphanRecipeTriggers_(); } catch (e) { /* ignore */ }
+
+  // If we're still at quota after the purge, fail with a clear message
+  // instead of bubbling Apps Script's cryptic "too many triggers" string.
+  const current = ScriptApp.getProjectTriggers().length;
+  if (current >= TRIGGER_QUOTA) {
+    throw new Error(
+      'Schedule limit reached. Delete an existing recurring sweep before adding another.'
+    );
+  }
+
   const tb = ScriptApp.newTrigger(RECIPE_HANDLER).timeBased();
   const hour = 3;
 
@@ -88,7 +134,21 @@ function installRecipeTrigger_(recipe) {
     throw new Error('Unknown cadence: ' + recipe.cadence);
   }
 
-  const trigger = tb.create();
+  let trigger;
+  try {
+    trigger = tb.create();
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    // Apps Script's exact wording varies; this catches the trigger quota
+    // case and rephrases it for the end user.
+    if (/too many|trigger/i.test(msg)) {
+      throw new Error(
+        'Schedule limit reached. Delete an existing recurring sweep before adding another.'
+      );
+    }
+    throw e;
+  }
+
   recipe.triggerId = trigger.getUniqueId();
   upsertRecipe_(recipe);
   return recipe;
