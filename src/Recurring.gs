@@ -16,7 +16,7 @@
 
 var RECIPES_KEY = 'mailsweep_recipes_v1';
 var DISPATCHER_HANDLER = 'runDueRecurringSweeps';
-var MAX_RECIPES = 50;
+var MAX_RECIPES = 25;
 
 // ---------- Storage CRUD ----------
 
@@ -126,7 +126,10 @@ function diagnoseTriggers() {
 function createRecipe(name, filters, cadence, digestEnabled) {
   const recipes = listRecipes_();
   if (recipes.length >= MAX_RECIPES) {
-    throw new Error('Recipe limit reached (' + MAX_RECIPES + ').');
+    throw new Error(
+      'You\'ve reached the ' + MAX_RECIPES +
+      '-recipe limit. Delete an existing one to add another.'
+    );
   }
   const recipe = {
     id: newRecipeId_(),

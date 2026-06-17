@@ -669,9 +669,11 @@ function buildHomepageRecipesSection_() {
   if (!recipes.length) return null;
 
   const active = recipes.filter(function (r) { return r.enabled; }).length;
+  const cap = MAX_RECIPES;
+  const countDisplay = recipes.length + ' of ' + cap;
   const headerText = active === recipes.length
-    ? '<b>RECURRING SWEEPS (' + recipes.length + ')</b>'
-    : '<b>RECURRING SWEEPS (' + active + ' active · ' + (recipes.length - active) + ' paused)</b>';
+    ? '<b>RECURRING SWEEPS (' + countDisplay + ')</b>'
+    : '<b>RECURRING SWEEPS (' + countDisplay + ' · ' + active + ' active)</b>';
 
   const section = CardService.newCardSection().setHeader(headerText);
   for (let i = 0; i < recipes.length; i++) {
@@ -693,6 +695,19 @@ function buildHomepageRecipesSection_() {
         )
     );
   }
+
+  // Show the rule only when the user is at or near the cap, so it stops
+  // being decorative noise and starts being actionable advice.
+  if (recipes.length >= cap - 2) {
+    const note = recipes.length >= cap
+      ? 'You\'ve reached the ' + cap + '-recipe limit. Delete one to add another.'
+      : 'You can save up to ' + cap + ' recurring sweeps. Delete one to make room when you hit the limit.';
+    section.addWidget(
+      CardService.newTextParagraph()
+        .setText('<font color="#5f6368">' + note + '</font>')
+    );
+  }
+
   return section;
 }
 
