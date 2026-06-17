@@ -1,51 +1,22 @@
 /**
  * Recurring sweeps: saved filter recipes that run on a daily/weekly/monthly
- * cadence via Apps Script time-driven triggers. After every run we send the
- * user a short Gmail digest with the count and a Trash link.
+ * cadence via a SINGLE shared time-driven trigger per user.
  *
- * Storage: one UserProperty key holding a JSON array of recipes. Hard cap 20
- * (also matches Apps Script's 20-triggers-per-script-per-user limit).
+ * Storage: one UserProperty key holding a JSON array of recipes.
  *
- * Trigger model: each recipe owns ONE clock trigger. The shared handler
- * `runRecurringSweep` receives the trigger's uid via the event arg, looks up
- * the recipe whose triggerId matches, and runs the sweep.
+ * Trigger model: ONE clock trigger per user. Created lazily on the first
+ * recipe save and reused forever. It fires daily at ~3am; the handler
+ * `runDueRecurringSweeps` walks every recipe and decides which are due
+ * based on cadence + lastRunAt. This sidesteps Apps Script's per-user
+ * trigger-create rate limit entirely — save/pause/rename/cadence-change
+ * never touch the trigger system after the first install.
+ *
+ * Recipe cap is 50 for sanity; trigger count is no longer a constraint.
  */
 
 var RECIPES_KEY = 'mailsweep_recipes_v1';
-var RECIPE_HANDLER = 'runRecurringSweep';
-
-// Apps Script enforces 20 triggers per user per script. We reserve 2 slots
-// for the background-continuation handler (sweeps that take >6min) and a
-// safety buffer for transient install/uninstall races, so a user can hold
-// up to 18 recurring recipes.
-var MAX_RECIPES = 18;
-var TRIGGER_QUOTA = 20;
-
-/**
- * Purge orphan recipe triggers — any trigger pointing at RECIPE_HANDLER
- * that no live recipe still references. Run automatically before installing
- * a new recipe trigger; also exposed manually for dev/recovery.
- */
-function purgeOrphanTriggers() {
-  return purgeOrphanRecipeTriggers_();
-}
-
-function purgeOrphanRecipeTriggers_() {
-  const recipes = listRecipes_();
-  const ownedIds = {};
-  for (let i = 0; i < recipes.length; i++) {
-    if (recipes[i].triggerId) ownedIds[recipes[i].triggerId] = true;
-  }
-  const triggers = ScriptApp.getProjectTriggers();
-  let deleted = 0;
-  for (let i = 0; i < triggers.length; i++) {
-    const t = triggers[i];
-    if (t.getHandlerFunction() === RECIPE_HANDLER && !ownedIds[t.getUniqueId()]) {
-      try { ScriptApp.deleteTrigger(t); deleted++; } catch (e) { /* ignore */ }
-    }
-  }
-  return deleted;
-}
+var DISPATCHER_HANDLER = 'runDueRecurringSweeps';
+var MAX_RECIPES = 50;
 
 // ---------- Storage CRUD ----------
 
@@ -91,104 +62,67 @@ function newRecipeId_() {
     Math.floor(Math.random() * 1e6).toString(36);
 }
 
-// ---------- Trigger install / uninstall ----------
+// ---------- Shared dispatcher trigger ----------
 
 /**
- * Installs a clock trigger for the recipe, stores the trigger uid on the
- * recipe, and persists. Caller is responsible for uninstalling any prior
- * trigger for this recipe first.
- *
- * Cadence rules:
- *   daily   → every day at ~3am script timezone
- *   weekly  → same weekday as createdAt, ~3am
- *   monthly → 1st of every month, ~3am  (Apps Script ClockTriggerBuilder
- *             doesn't support arbitrary day-of-month for monthly; we fire
- *             monthly-on-the-1st as the simplest reliable cadence)
+ * Ensures the single shared daily dispatcher trigger exists. Idempotent —
+ * if one already exists for this user, does nothing. Called once on the
+ * first recipe save and after manual purges.
  */
-function installRecipeTrigger_(recipe) {
-  // Best-effort cleanup of orphan triggers before consuming a slot.
-  // Cheap, idempotent, and removes the most common "too many triggers"
-  // cause (orphans left by deleted recipes or aborted installs).
-  try { purgeOrphanRecipeTriggers_(); } catch (e) { /* ignore */ }
-
-  // If we're still at quota after the purge, fail with a clear message
-  // instead of bubbling Apps Script's cryptic "too many triggers" string.
-  const current = ScriptApp.getProjectTriggers().length;
-  if (current >= TRIGGER_QUOTA) {
-    throw new Error(
-      'Schedule limit reached. Delete an existing recurring sweep before adding another.'
-    );
+function ensureDispatcherTrigger_() {
+  const existing = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < existing.length; i++) {
+    if (existing[i].getHandlerFunction() === DISPATCHER_HANDLER) return;
   }
-
-  const tb = ScriptApp.newTrigger(RECIPE_HANDLER).timeBased();
-  const hour = 3;
-
-  if (recipe.cadence === 'daily') {
-    tb.everyDays(1).atHour(hour);
-  } else if (recipe.cadence === 'weekly') {
-    const wd = weekdayForRecipe_(recipe);
-    tb.onWeekDay(wd).atHour(hour);
-  } else if (recipe.cadence === 'monthly') {
-    tb.onMonthDay(1).atHour(hour);
-  } else {
-    throw new Error('Unknown cadence: ' + recipe.cadence);
-  }
-
-  let trigger;
-  try {
-    trigger = tb.create();
-  } catch (e) {
-    const msg = String(e && e.message || e);
-    // Apps Script's exact wording varies; this catches the trigger quota
-    // case and rephrases it for the end user.
-    if (/too many|trigger/i.test(msg)) {
-      throw new Error(
-        'Schedule limit reached. Delete an existing recurring sweep before adding another.'
-      );
-    }
-    throw e;
-  }
-
-  recipe.triggerId = trigger.getUniqueId();
-  upsertRecipe_(recipe);
-  return recipe;
+  ScriptApp.newTrigger(DISPATCHER_HANDLER)
+    .timeBased()
+    .everyDays(1)
+    .atHour(3)
+    .create();
 }
 
-function uninstallRecipeTrigger_(recipeId) {
-  const recipe = getRecipe_(recipeId);
-  if (!recipe || !recipe.triggerId) return;
+/**
+ * Maintenance: deletes ALL recipe-related triggers (the shared dispatcher
+ * AND any legacy per-recipe triggers from older code). Safe to run anytime.
+ * The next recipe action will re-create the dispatcher.
+ */
+function purgeOrphanTriggers() {
   const triggers = ScriptApp.getProjectTriggers();
+  let deleted = 0;
   for (let i = 0; i < triggers.length; i++) {
-    if (triggers[i].getUniqueId() === recipe.triggerId) {
-      ScriptApp.deleteTrigger(triggers[i]);
-      break;
+    const t = triggers[i];
+    const h = t.getHandlerFunction();
+    if (h === DISPATCHER_HANDLER ||
+        h === 'runRecurringSweep' /* legacy per-recipe handler */) {
+      try { ScriptApp.deleteTrigger(t); deleted++; } catch (e) { /* ignore */ }
     }
   }
-  recipe.triggerId = null;
-  upsertRecipe_(recipe);
+  console.log('Purged ' + deleted + ' recipe trigger(s).');
+  return deleted;
 }
 
-function weekdayForRecipe_(recipe) {
-  const days = [
-    ScriptApp.WeekDay.SUNDAY,
-    ScriptApp.WeekDay.MONDAY,
-    ScriptApp.WeekDay.TUESDAY,
-    ScriptApp.WeekDay.WEDNESDAY,
-    ScriptApp.WeekDay.THURSDAY,
-    ScriptApp.WeekDay.FRIDAY,
-    ScriptApp.WeekDay.SATURDAY
-  ];
-  const ref = recipe.createdAt ? new Date(recipe.createdAt) : new Date();
-  return days[ref.getDay()];
+/**
+ * Diagnostic: prints the actual trigger + recipe state.
+ */
+function diagnoseTriggers() {
+  const triggers = ScriptApp.getProjectTriggers();
+  console.log('=== TRIGGERS (' + triggers.length + ') ===');
+  triggers.forEach(function (t, i) {
+    console.log(i + ': handler=' + t.getHandlerFunction() +
+      ' uid=' + t.getUniqueId() +
+      ' type=' + t.getEventType());
+  });
+  const recipes = listRecipes_();
+  console.log('=== RECIPES (' + recipes.length + ') ===');
+  recipes.forEach(function (r) {
+    console.log('Recipe "' + r.name + '" enabled=' + r.enabled +
+      ' cadence=' + r.cadence + ' lastRunAt=' + r.lastRunAt);
+  });
+  console.log('MAX_RECIPES=' + MAX_RECIPES);
 }
 
 // ---------- Public API used by Cards / Code ----------
 
-/**
- * Create a recipe from current filters + cadence, install trigger, persist.
- * Returns the saved recipe. Caller must enforce paywall + duplicate-name
- * checks before calling.
- */
 function createRecipe(name, filters, cadence, digestEnabled) {
   const recipes = listRecipes_();
   if (recipes.length >= MAX_RECIPES) {
@@ -206,9 +140,17 @@ function createRecipe(name, filters, cadence, digestEnabled) {
     totalSwept: 0,
     runCount: 0,
     createdAt: Date.now(),
-    triggerId: null
+    // weekday and monthday captured at create time — these decide which days
+    // the dispatcher considers the recipe "due" when it fires daily.
+    weekday: new Date().getDay(),       // 0=Sun..6=Sat
+    monthday: new Date().getDate()      // 1..31
   };
-  return installRecipeTrigger_(recipe);
+  upsertRecipe_(recipe);
+  // First save bootstraps the shared dispatcher; later saves are no-ops.
+  try { ensureDispatcherTrigger_(); } catch (e) {
+    console.error('Dispatcher install failed: ' + (e && e.message || e));
+  }
+  return recipe;
 }
 
 function setRecipeDigest(recipeId, digestEnabled) {
@@ -222,18 +164,7 @@ function setRecipeDigest(recipeId, digestEnabled) {
 function setRecipeEnabled(recipeId, enabled) {
   const recipe = getRecipe_(recipeId);
   if (!recipe) return null;
-  if (enabled && !recipe.triggerId) {
-    recipe.enabled = true;
-    return installRecipeTrigger_(recipe);
-  }
-  if (!enabled && recipe.triggerId) {
-    uninstallRecipeTrigger_(recipeId);
-    const r = getRecipe_(recipeId);
-    r.enabled = false;
-    upsertRecipe_(r);
-    return r;
-  }
-  recipe.enabled = enabled;
+  recipe.enabled = !!enabled;
   upsertRecipe_(recipe);
   return recipe;
 }
@@ -249,54 +180,88 @@ function renameRecipe(recipeId, newName) {
 function changeRecipeCadence(recipeId, cadence) {
   const recipe = getRecipe_(recipeId);
   if (!recipe) return null;
-  if (recipe.triggerId) uninstallRecipeTrigger_(recipeId);
-  const r = getRecipe_(recipeId);
-  r.cadence = cadence;
-  upsertRecipe_(r);
-  if (r.enabled) return installRecipeTrigger_(r);
-  return r;
+  recipe.cadence = cadence;
+  upsertRecipe_(recipe);
+  return recipe;
 }
 
 function deleteRecipeAndTrigger(recipeId) {
-  uninstallRecipeTrigger_(recipeId);
   deleteRecipe_(recipeId);
-}
-
-// ---------- Trigger entry point ----------
-
-/**
- * Shared handler fired by every recipe trigger. Looks up which recipe owns
- * this trigger uid and runs its sweep.
- *
- * Apps Script gives us the trigger uid on the event arg.
- */
-function runRecurringSweep(e) {
-  const triggerUid = e && e.triggerUid;
-  if (!triggerUid) return;
-
-  const recipes = listRecipes_();
-  let recipe = null;
-  for (let i = 0; i < recipes.length; i++) {
-    if (recipes[i].triggerId === triggerUid) {
-      recipe = recipes[i];
-      break;
+  // If the user just deleted their last recipe, free up the dispatcher
+  // slot. They can save another anytime and we'll lazily reinstall it.
+  const remaining = listRecipes_();
+  if (remaining.length === 0) {
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === DISPATCHER_HANDLER) {
+        try { ScriptApp.deleteTrigger(triggers[i]); } catch (e) { /* ignore */ }
+      }
     }
   }
-  if (!recipe || !recipe.enabled) return;
+}
 
-  runRecipeNow_(recipe.id);
+// ---------- Dispatcher: fires daily, runs whichever recipes are due ----------
+
+function runDueRecurringSweeps() {
+  const recipes = listRecipes_();
+  const now = new Date();
+  for (let i = 0; i < recipes.length; i++) {
+    const r = recipes[i];
+    if (!r.enabled) continue;
+    if (isRecipeDue_(r, now)) {
+      try {
+        runRecipeNow_(r.id);
+      } catch (e) {
+        console.error('Recipe "' + r.name + '" failed: ' +
+          (e && e.message || e));
+      }
+    }
+  }
 }
 
 /**
- * Runs the recipe immediately (used by both the trigger handler and the
- * "Run now" button on the per-recipe edit card).
+ * Returns true if this recipe should fire today. Combines cadence + last-run
+ * + the recipe's anchor day (weekday / monthday) captured at create time.
+ *
+ *   daily   → due if not yet run today
+ *   weekly  → due if today's weekday matches recipe.weekday AND not yet run
+ *             in the last 6 days (prevents double-fires if dispatcher runs
+ *             multiple times on the same day for any reason)
+ *   monthly → due if today's day-of-month matches recipe.monthday AND not yet
+ *             run in the last 27 days (same dedup intent)
+ */
+function isRecipeDue_(recipe, now) {
+  const today = startOfDay_(now).getTime();
+  const lastRun = recipe.lastRunAt ? startOfDay_(new Date(recipe.lastRunAt)).getTime() : 0;
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  if (recipe.cadence === 'daily') {
+    return lastRun < today;
+  }
+  if (recipe.cadence === 'weekly') {
+    if (now.getDay() !== recipe.weekday) return false;
+    return (today - lastRun) >= 6 * oneDay;
+  }
+  if (recipe.cadence === 'monthly') {
+    if (now.getDate() !== recipe.monthday) return false;
+    return (today - lastRun) >= 27 * oneDay;
+  }
+  return false;
+}
+
+function startOfDay_(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+/**
+ * Runs the recipe immediately — used by both the dispatcher and the
+ * "Run now" button on the per-recipe edit card.
  *
  * Reuses the existing deleteMatchingThreads_ pipeline (same battle-tested
- * batchModify path, same 3-min internal budget, same per-call safety).
- *
- * For huge recipes we accept what one run can do — we don't chain a
- * background trigger from here, since the next cadence fire will pick up
- * whatever's left.
+ * batchModify path, same 3-min internal budget). For huge recipes we
+ * accept what one run can do — the next cadence fire picks up the rest.
  */
 function runRecipeNow_(recipeId) {
   const recipe = getRecipe_(recipeId);
