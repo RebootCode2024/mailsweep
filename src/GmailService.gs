@@ -32,6 +32,11 @@ function buildQuery_(filters) {
     var d = (excludeDomains[i] || '').trim();
     if (d) parts.push('-from:' + d);
   }
+  // Raw passthrough — used by mark-as-read presets to inject `is:unread
+  // category:promotions` etc. without adding a structured field for every
+  // Gmail operator.
+  var extraQuery = (filters.extraQuery || '').trim();
+  if (extraQuery) parts.push(extraQuery);
   return parts.join(' ');
 }
 
@@ -186,6 +191,87 @@ function gmailBatchGetSizes_(ids) {
     } catch (e) { /* skip */ }
   }
   return out;
+}
+
+/**
+ * Mark-as-read counterpart to deleteMatchingThreads_.
+ * Same batching, budget, and timeout behavior. Difference: instead of adding
+ * the TRASH label, we remove the UNREAD label. The emails stay where they
+ * are — only the read state changes. Fully reversible by the user via
+ * Gmail's own UI.
+ *
+ * Returns { marked, remaining, remainingCapped, timedOut } so the result
+ * card can read the same fields as the delete path.
+ */
+function markMatchingRead_(filters) {
+  const q = buildQuery_(filters);
+  if (!q) return { marked: 0, remaining: 0, remainingCapped: false, timedOut: false };
+
+  const start = Date.now();
+  let marked = 0;
+  let pageToken;
+  let timedOut = false;
+  let buffer = [];
+
+  do {
+    if (Date.now() - start > MAX_RUN_MS) { timedOut = true; break; }
+
+    const page = Gmail.Users.Messages.list('me', {
+      q: q,
+      maxResults: BATCH_SIZE,
+      pageToken: pageToken,
+      fields: 'nextPageToken,messages/id'
+    });
+    const msgs = page.messages || [];
+    if (!msgs.length && !buffer.length) break;
+
+    for (let i = 0; i < msgs.length; i++) buffer.push(msgs[i].id);
+
+    while (buffer.length >= BATCH_TRASH_SIZE) {
+      if (Date.now() - start > MAX_RUN_MS) { timedOut = true; break; }
+      const chunk = buffer.splice(0, BATCH_TRASH_SIZE);
+      try {
+        Gmail.Users.Messages.batchModify({
+          ids: chunk,
+          removeLabelIds: ['UNREAD']
+        }, 'me');
+        marked += chunk.length;
+      } catch (e) {
+        console.error('batchModify (mark-read) failed: ' + (e && e.message || e));
+      }
+    }
+    pageToken = page.nextPageToken;
+  } while (pageToken && !timedOut);
+
+  if (!timedOut && buffer.length) {
+    try {
+      Gmail.Users.Messages.batchModify({
+        ids: buffer,
+        removeLabelIds: ['UNREAD']
+      }, 'me');
+      marked += buffer.length;
+      buffer = [];
+    } catch (e) {
+      console.error('batchModify (mark-read flush) failed: ' + (e && e.message || e));
+    }
+  }
+
+  let remaining = 0;
+  let remainingCapped = false;
+  try {
+    const fast = countMatchingFast_(filters);
+    remaining = fast.count;
+    remainingCapped = fast.capped;
+  } catch (e) {
+    remaining = timedOut ? BATCH_SIZE : 0;
+    remainingCapped = timedOut;
+  }
+  return {
+    marked: marked,
+    remaining: remaining,
+    remainingCapped: remainingCapped,
+    timedOut: timedOut
+  };
 }
 
 function deleteMatchingThreads_(filters) {

@@ -30,7 +30,9 @@ var ICON = {
   paused:    'https://api.iconify.design/material-symbols/pause-circle-rounded.svg?color=%235f6368',
   storage:   'https://api.iconify.design/material-symbols/inventory-2-rounded.svg?color=%231a73e8',
   attach:    'https://api.iconify.design/material-symbols/attach-file-rounded.svg?color=%231a73e8',
-  archive:   'https://api.iconify.design/material-symbols/archive-rounded.svg?color=%231a73e8'
+  archive:   'https://api.iconify.design/material-symbols/archive-rounded.svg?color=%231a73e8',
+  markread:  'https://api.iconify.design/material-symbols/mark-email-read-rounded.svg?color=%231a73e8',
+  badge:     'https://api.iconify.design/material-symbols/notifications-off-rounded.svg?color=%231a73e8'
 };
 
 function buildFilterCard() {
@@ -47,6 +49,7 @@ function buildFilterCard() {
   return card
     .addSection(buildPresetsSection_())
     .addSection(buildStoragePresetsSection_())
+    .addSection(buildMarkReadPresetsSection_())
     .addSection(buildCustomFilterSection_())
     .addSection(buildDateRangeSection_())
     .addSection(buildPreviewButtonSection_())
@@ -84,6 +87,42 @@ function presetRow_(title, iconUrl, subtitle, filters) {
       CardService.newAction()
         .setFunctionName('onPresetClick')
         .setParameters({ filters: JSON.stringify(filters) })
+    );
+}
+
+function buildMarkReadPresetsSection_() {
+  return CardService.newCardSection()
+    .setHeader('<b>CLEAR UNREAD BADGE</b>')
+    .addWidget(presetRow_(
+      'Old unread mail',
+      ICON.badge,
+      'Unread, older than 30 days',
+      { action: 'read', extraQuery: 'is:unread older_than:30d' }
+    ))
+    .addWidget(presetRow_(
+      'Unread Promotions',
+      ICON.promo,
+      'Marketing & deals you never opened',
+      { action: 'read', extraQuery: 'is:unread category:promotions' }
+    ))
+    .addWidget(presetRow_(
+      'Unread Social',
+      ICON.social,
+      'Facebook, LinkedIn, etc.',
+      { action: 'read', extraQuery: 'is:unread category:social' }
+    ))
+    .addWidget(presetRow_(
+      'Unread Updates',
+      ICON.updates,
+      'Receipts & notifications',
+      { action: 'read', extraQuery: 'is:unread category:updates' }
+    ))
+    .addWidget(
+      CardService.newTextParagraph()
+        .setText('<font color="#5f6368">' +
+          'Marks emails as read — they stay in your inbox, only the badge changes. ' +
+          'Reversible anytime via Gmail.' +
+        '</font>')
     );
 }
 
@@ -197,6 +236,7 @@ function buildPreviewCard(filters, count, capped, estimated, bytesEstimate) {
     ? count.toLocaleString() + '+'
     : (estimated ? '~' + count.toLocaleString() : count.toLocaleString());
   const isStoragePreset = (Number(filters.sizeMinMB) || 0) > 0;
+  const isMarkRead = filters.action === 'read';
 
   const heroSection = CardService.newCardSection();
   if (count === 0) {
@@ -205,6 +245,14 @@ function buildPreviewCard(filters, count, capped, estimated, bytesEstimate) {
         .setStartIcon(CardService.newIconImage().setIconUrl(ICON.none))
         .setText('<b>No matching emails</b>')
         .setBottomLabel('Try a different filter.')
+    );
+  } else if (isMarkRead) {
+    heroSection.addWidget(
+      CardService.newDecoratedText()
+        .setStartIcon(CardService.newIconImage().setIconUrl(ICON.markread))
+        .setText('<font color="' + BRAND_BLUE + '"><b>' + countText + '</b></font> unread emails')
+        .setBottomLabel('Marking as read keeps them in your inbox — only the badge changes.')
+        .setWrapText(true)
     );
   } else if (isStoragePreset && bytesEstimate > 0) {
     heroSection.addWidget(
@@ -235,11 +283,15 @@ function buildPreviewCard(filters, count, capped, estimated, bytesEstimate) {
   const buttonSection = CardService.newCardSection();
   const previewButtons = CardService.newButtonSet();
   if (count > 0) {
+    const primaryLabel = isMarkRead
+      ? 'Mark ' + countText + ' as read'
+      : 'Move ' + countText + ' to Trash';
+    const primaryColor = isMarkRead ? BRAND_BLUE : DANGER_RED;
     previewButtons.addButton(
       CardService.newTextButton()
-        .setText('Move ' + countText + ' to Trash')
+        .setText(primaryLabel)
         .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-        .setBackgroundColor(DANGER_RED)
+        .setBackgroundColor(primaryColor)
         .setOnClickAction(
           CardService.newAction()
             .setFunctionName('onDeletePrompt')
@@ -406,28 +458,38 @@ function buildConfirmCard(filters, count, total, capped, bytesEstimate) {
   total = total || count;
   const countText = capped ? count.toLocaleString() + '+' : count.toLocaleString();
   bytesEstimate = Number(bytesEstimate) || 0;
+  const isMarkRead = filters.action === 'read';
+  const isStoragePreset = (Number(filters.sizeMinMB) || 0) > 0;
 
   const warning = CardService.newDecoratedText()
-    .setStartIcon(CardService.newIconImage().setIconUrl(ICON.warn))
-    .setText('<b>Confirm trash</b>')
-    .setBottomLabel('Recoverable for 30 days');
+    .setStartIcon(CardService.newIconImage().setIconUrl(
+      isMarkRead ? ICON.markread : ICON.warn
+    ))
+    .setText(isMarkRead ? '<b>Confirm mark as read</b>' : '<b>Confirm trash</b>')
+    .setBottomLabel(isMarkRead ? 'Reversible anytime via Gmail' : 'Recoverable for 30 days');
 
-  const isStoragePreset = (Number(filters.sizeMinMB) || 0) > 0;
-  const detailText = isStoragePreset && bytesEstimate > 0
-    ? 'Moving <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
+  let detailText;
+  if (isMarkRead) {
+    detailText = 'Marking <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
+      ' as read. They stay in your inbox — only the unread badge changes. ' +
+      'You can mark them unread again from Gmail anytime.';
+  } else if (isStoragePreset && bytesEstimate > 0) {
+    detailText = 'Moving <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
       ' (~' + formatBytes_(bytesEstimate) + ') to <b>Trash</b>. ' +
-      'Empty Gmail Trash afterwards to free this storage immediately.'
-    : 'Moving <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
+      'Empty Gmail Trash afterwards to free this storage immediately.';
+  } else {
+    detailText = 'Moving <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
       ' to <b>Trash</b>. Gmail keeps trashed mail for 30 days, then deletes it permanently.';
+  }
 
   const detail = CardService.newDecoratedText()
     .setText(detailText)
     .setWrapText(true);
 
   const confirm = CardService.newTextButton()
-    .setText('Yes, move to Trash')
+    .setText(isMarkRead ? 'Yes, mark as read' : 'Yes, move to Trash')
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-    .setBackgroundColor(DANGER_RED)
+    .setBackgroundColor(isMarkRead ? BRAND_BLUE : DANGER_RED)
     .setOnClickAction(
       CardService.newAction()
         .setFunctionName('onDeleteConfirm')
@@ -468,19 +530,29 @@ function buildResultCard(filters, result, total, deletedSoFar, bytesEstimate) {
     ? remaining.toLocaleString() + '+'
     : remaining.toLocaleString();
   const isStoragePreset = (Number(filters.sizeMinMB) || 0) > 0;
+  const isMarkRead = result.isMarkRead || filters.action === 'read';
 
   const hero = CardService.newDecoratedText()
-    .setStartIcon(CardService.newIconImage().setIconUrl(isDone ? ICON.check : ICON.trash));
+    .setStartIcon(CardService.newIconImage().setIconUrl(
+      isDone ? ICON.check : (isMarkRead ? ICON.markread : ICON.trash)
+    ));
 
   if (isDone) {
-    const sizeNote = isStoragePreset && bytesEstimate > 0
-      ? '~' + formatBytes_(bytesEstimate) + ' pending after empty Trash'
-      : 'Trashed ' + deletedSoFar.toLocaleString() + ' email' +
-        (deletedSoFar === 1 ? '' : 's');
+    let bottomLabel;
+    if (isMarkRead) {
+      bottomLabel = 'Marked ' + deletedSoFar.toLocaleString() + ' email' +
+                    (deletedSoFar === 1 ? '' : 's') + ' as read';
+    } else if (isStoragePreset && bytesEstimate > 0) {
+      bottomLabel = '~' + formatBytes_(bytesEstimate) + ' pending after empty Trash';
+    } else {
+      bottomLabel = 'Trashed ' + deletedSoFar.toLocaleString() + ' email' +
+                    (deletedSoFar === 1 ? '' : 's');
+    }
     hero.setText('<font color="' + SUCCESS_GREEN + '"><b>All done</b></font>')
-        .setBottomLabel(sizeNote);
+        .setBottomLabel(bottomLabel);
   } else {
-    hero.setText('<b>' + deletedSoFar.toLocaleString() + '</b> trashed so far')
+    const inProgressVerb = isMarkRead ? 'marked so far' : 'trashed so far';
+    hero.setText('<b>' + deletedSoFar.toLocaleString() + '</b> ' + inProgressVerb)
         .setBottomLabel(remainingText + ' still match the filter');
   }
 
@@ -497,9 +569,14 @@ function buildResultCard(filters, result, total, deletedSoFar, bytesEstimate) {
   }
 
   if (isDone) {
-    const refreshNote = isStoragePreset
-      ? 'Empty Gmail Trash to free the storage immediately. Refresh Gmail to update the list.'
-      : 'Refresh Gmail to update the inbox list.';
+    let refreshNote;
+    if (isMarkRead) {
+      refreshNote = 'Refresh Gmail — your unread badge should drop.';
+    } else if (isStoragePreset) {
+      refreshNote = 'Empty Gmail Trash to free the storage immediately. Refresh Gmail to update the list.';
+    } else {
+      refreshNote = 'Refresh Gmail to update the inbox list.';
+    }
     heroSection.addWidget(
       CardService.newTextParagraph()
         .setText('<font color="#5f6368">' + refreshNote + '</font>')
@@ -532,7 +609,7 @@ function buildResultCard(filters, result, total, deletedSoFar, bytesEstimate) {
   );
   buttonSection.addWidget(resultButtons);
 
-  if (isDone && isStoragePreset && deletedSoFar > 0) {
+  if (isDone && isStoragePreset && !isMarkRead && deletedSoFar > 0) {
     buttonSection.addWidget(
       CardService.newButtonSet().addButton(
         CardService.newTextButton()
@@ -546,7 +623,7 @@ function buildResultCard(filters, result, total, deletedSoFar, bytesEstimate) {
     );
   }
 
-  if (isDone && deletedSoFar > 0) {
+  if (isDone && !isMarkRead && deletedSoFar > 0) {
     buttonSection.addWidget(
       CardService.newTextParagraph()
         .setText('<font color="#5f6368">Want this to run automatically?</font>')

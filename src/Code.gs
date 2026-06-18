@@ -144,7 +144,18 @@ function onDeleteConfirm(e) {
   }
 
   try {
-    const result = deleteMatchingThreads_(filters);
+    const isMarkRead = filters.action === 'read';
+    const raw = isMarkRead
+      ? markMatchingRead_(filters)
+      : deleteMatchingThreads_(filters);
+    // Normalize to the shared shape the rest of this handler expects.
+    const result = {
+      deleted: isMarkRead ? (raw.marked || 0) : (raw.deleted || 0),
+      remaining: raw.remaining || 0,
+      remainingCapped: !!raw.remainingCapped,
+      timedOut: !!raw.timedOut,
+      isMarkRead: isMarkRead
+    };
     const newDeletedSoFar = deletedSoFar + result.deleted;
 
     // If there's more to do, hand off to a background trigger.
@@ -180,12 +191,16 @@ function onDeleteConfirm(e) {
         .build();
     }
 
+    const verb = result.isMarkRead ? 'Marked' : 'Trashed';
+    const tail = result.isMarkRead
+      ? ' as read. Refresh Gmail to update the badge.'
+      : '. Refresh Gmail to update the list.';
     return CardService.newActionResponseBuilder()
       .setNavigation(CardService.newNavigation().updateCard(
         buildResultCard(filters, result, total, deletedSoFar, bytesEstimate)
       ))
       .setNotification(CardService.newNotification()
-        .setText('Trashed ' + result.deleted + ' email' + (result.deleted === 1 ? '' : 's') + '. Refresh Gmail to update the list.'))
+        .setText(verb + ' ' + result.deleted + ' email' + (result.deleted === 1 ? '' : 's') + tail))
       .setStateChanged(true)
       .build();
   } catch (err) {
