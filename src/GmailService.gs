@@ -15,12 +15,19 @@ function buildQuery_(filters) {
   var dateFrom = (filters.dateFrom || '').trim();
   var dateTo   = (filters.dateTo   || '').trim();
   var excludeDomains = filters.excludeDomains || [];
+  // Storage-cleanup operators — only set by Free-up-storage presets.
+  var sizeMinMB     = Number(filters.sizeMinMB) || 0;
+  var hasAttachment = !!filters.hasAttachment;
+  var olderThan     = (filters.olderThan || '').trim(); // e.g. "5y", "1y", "30d"
 
   if (sender)  parts.push('from:' + quoteIfNeeded_(sender));
   if (subject) parts.push('subject:' + quoteIfNeeded_(subject));
   if (label)   parts.push('label:' + labelToken_(label));
   if (dateFrom) parts.push('after:' + dateFrom);
   if (dateTo)   parts.push('before:' + dateTo);
+  if (sizeMinMB > 0)    parts.push('larger:' + sizeMinMB + 'M');
+  if (hasAttachment)    parts.push('has:attachment');
+  if (olderThan)        parts.push('older_than:' + olderThan);
   for (var i = 0; i < excludeDomains.length; i++) {
     var d = (excludeDomains[i] || '').trim();
     if (d) parts.push('-from:' + d);
@@ -58,9 +65,14 @@ function labelToken_(v) {
 // If results fit in a single page → exact count.
 // If more pages exist → Gmail's resultSizeEstimate (marked as estimate in UI).
 // This replaces a paginate-to-10k loop that previously took 5-10s.
+//
+// For storage-cleanup filters (sizeMinMB > 0) we additionally pass through a
+// single extra page to gather sizeEstimate values so the preview card can
+// show "~340 MB will be freed". We cap the size-scan at one extra Gmail
+// batch get so it stays under the 1s budget even on huge inboxes.
 function countMatchingThreads_(filters) {
   const q = buildQuery_(filters);
-  if (!q) return { count: 0, capped: false, estimated: false };
+  if (!q) return { count: 0, capped: false, estimated: false, bytesEstimate: 0 };
 
   let page;
   try {
@@ -70,19 +82,110 @@ function countMatchingThreads_(filters) {
       fields: 'nextPageToken,resultSizeEstimate,messages/id'
     });
   } catch (e) {
-    return { count: 0, capped: false, estimated: false };
+    return { count: 0, capped: false, estimated: false, bytesEstimate: 0 };
   }
 
-  const firstPageCount = (page.messages || []).length;
+  const firstPageMessages = page.messages || [];
+  const firstPageCount = firstPageMessages.length;
+  let count, estimated, capped;
 
   // Single page → exact count.
   if (!page.nextPageToken) {
-    return { count: firstPageCount, capped: false, estimated: false };
+    count = firstPageCount;
+    estimated = false;
+    capped = false;
+  } else {
+    // More pages exist → use Gmail's index estimate (lower-bounded by what we saw).
+    count = Math.max(Number(page.resultSizeEstimate) || 0, firstPageCount);
+    estimated = true;
+    capped = false;
   }
 
-  // More pages exist → use Gmail's index estimate (lower-bounded by what we saw).
-  const estimate = Math.max(Number(page.resultSizeEstimate) || 0, firstPageCount);
-  return { count: estimate, capped: false, estimated: true };
+  let bytesEstimate = 0;
+  if ((Number(filters.sizeMinMB) || 0) > 0 && firstPageMessages.length > 0) {
+    bytesEstimate = sumMessageSizes_(firstPageMessages, count);
+  }
+
+  return { count: count, capped: capped, estimated: estimated, bytesEstimate: bytesEstimate };
+}
+
+// Sample-based size estimator for storage cleanup.
+// We sum sizeEstimate from a sample of message-gets and scale up to total.
+// For < 50 messages we sum the whole set for accuracy; above that we sample
+// the first 50 and scale (Gmail's sizeEstimate per-message is itself a
+// rough number, so over-precision here is wasted work).
+function sumMessageSizes_(firstPageMessages, totalCount) {
+  const SAMPLE = Math.min(50, firstPageMessages.length);
+  const ids = [];
+  for (let i = 0; i < SAMPLE; i++) ids.push(firstPageMessages[i].id);
+
+  const sizes = gmailBatchGetSizes_(ids);
+  let sampledBytes = 0;
+  let sampledN = 0;
+  for (let i = 0; i < sizes.length; i++) {
+    if (sizes[i] > 0) { sampledBytes += sizes[i]; sampledN++; }
+  }
+  if (sampledN === 0) return 0;
+  const avg = sampledBytes / sampledN;
+  return Math.round(avg * totalCount);
+}
+
+// Variant of gmailBatchGetFrom_ that returns each message's sizeEstimate.
+function gmailBatchGetSizes_(ids) {
+  const out = new Array(ids.length);
+  for (let i = 0; i < out.length; i++) out[i] = 0;
+  if (!ids.length) return out;
+
+  const token = ScriptApp.getOAuthToken();
+  const boundary = 'mailsweep_sz_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+  let body = '';
+  for (let i = 0; i < ids.length; i++) {
+    body += '--' + boundary + '\r\n';
+    body += 'Content-Type: application/http\r\n';
+    body += 'Content-ID: <item-' + i + '>\r\n\r\n';
+    body += 'GET /gmail/v1/users/me/messages/' + ids[i] +
+            '?format=metadata&fields=sizeEstimate\r\n\r\n';
+  }
+  body += '--' + boundary + '--';
+
+  let res;
+  try {
+    res = UrlFetchApp.fetch('https://gmail.googleapis.com/batch/gmail/v1', {
+      method: 'post',
+      contentType: 'multipart/mixed; boundary=' + boundary,
+      headers: { Authorization: 'Bearer ' + token },
+      payload: body,
+      muteHttpExceptions: true
+    });
+  } catch (e) { return out; }
+
+  if (res.getResponseCode() !== 200) return out;
+  const headers = res.getAllHeaders();
+  const ct = headers['Content-Type'] || headers['content-type'] || '';
+  const bMatch = ct.match(/boundary=([^;]+)/);
+  if (!bMatch) return out;
+  const respBoundary = bMatch[1].replace(/^"|"$/g, '').trim();
+
+  const text = res.getContentText();
+  const parts = text.split('--' + respBoundary);
+  for (let p = 0; p < parts.length; p++) {
+    const part = parts[p];
+    if (!part || part === '--' || part === '--\r\n') continue;
+    const idMatch = part.match(/Content-ID:\s*<response-item-(\d+)>/i);
+    if (!idMatch) continue;
+    const idx = parseInt(idMatch[1], 10);
+    const o1 = part.indexOf('\r\n\r\n');
+    if (o1 < 0) continue;
+    const afterOuter = part.substring(o1 + 4);
+    const o2 = afterOuter.indexOf('\r\n\r\n');
+    if (o2 < 0) continue;
+    const jsonBody = afterOuter.substring(o2 + 4).trim().replace(/\r?\n--\s*$/, '');
+    try {
+      const data = JSON.parse(jsonBody);
+      out[idx] = Number(data && data.sizeEstimate) || 0;
+    } catch (e) { /* skip */ }
+  }
+  return out;
 }
 
 function deleteMatchingThreads_(filters) {

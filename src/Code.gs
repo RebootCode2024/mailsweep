@@ -57,7 +57,7 @@ function onPresetClick(e) {
 function runPreview_(filters) {
   try {
     const c = countMatchingThreads_(filters);
-    return pushCard_(buildPreviewCard(filters, c.count, c.capped, c.estimated));
+    return pushCard_(buildPreviewCard(filters, c.count, c.capped, c.estimated, c.bytesEstimate || 0));
   } catch (err) {
     return notify_('Error: ' + err.message);
   }
@@ -120,7 +120,8 @@ function onDeletePrompt(e) {
   const count = Number(params.count || 0);
   const total = Number(params.total || count);
   const capped = params.capped === '1';
-  return pushCard_(buildConfirmCard(filters, count, total, capped));
+  const bytesEstimate = Number(params.bytesEstimate || 0);
+  return pushCard_(buildConfirmCard(filters, count, total, capped, bytesEstimate));
 }
 
 function onDeleteConfirm(e) {
@@ -128,6 +129,7 @@ function onDeleteConfirm(e) {
   const filters = JSON.parse(params.filters || '{}');
   const total = Number(params.total || 0);
   const deletedSoFar = Number(params.deletedSoFar || 0);
+  const bytesEstimate = Number(params.bytesEstimate || 0);
 
   // Paywall check — only on the FIRST run of a sweep (when deletedSoFar=0).
   // Continuations of an in-progress sweep skip validation; the user already
@@ -163,7 +165,7 @@ function onDeleteConfirm(e) {
         // Trigger creation failed — fall back to manual Continue UI.
         return CardService.newActionResponseBuilder()
           .setNavigation(CardService.newNavigation().updateCard(
-            buildResultCard(filters, result, total, deletedSoFar)
+            buildResultCard(filters, result, total, deletedSoFar, bytesEstimate)
           ))
           .setStateChanged(true)
           .build();
@@ -180,7 +182,7 @@ function onDeleteConfirm(e) {
 
     return CardService.newActionResponseBuilder()
       .setNavigation(CardService.newNavigation().updateCard(
-        buildResultCard(filters, result, total, deletedSoFar)
+        buildResultCard(filters, result, total, deletedSoFar, bytesEstimate)
       ))
       .setNotification(CardService.newNotification()
         .setText('Trashed ' + result.deleted + ' email' + (result.deleted === 1 ? '' : 's') + '. Refresh Gmail to update the list.'))

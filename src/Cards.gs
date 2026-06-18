@@ -27,7 +27,10 @@ var ICON = {
   sparkle:   'https://api.iconify.design/material-symbols/auto-awesome-rounded.svg?color=%23f9ab00',
   repeat:    'https://api.iconify.design/material-symbols/repeat-rounded.svg?color=%231a73e8',
   schedule:  'https://api.iconify.design/material-symbols/event-repeat-rounded.svg?color=%231a73e8',
-  paused:    'https://api.iconify.design/material-symbols/pause-circle-rounded.svg?color=%235f6368'
+  paused:    'https://api.iconify.design/material-symbols/pause-circle-rounded.svg?color=%235f6368',
+  storage:   'https://api.iconify.design/material-symbols/database-rounded.svg?color=%231a73e8',
+  attach:    'https://api.iconify.design/material-symbols/attachment-rounded.svg?color=%231a73e8',
+  archive:   'https://api.iconify.design/material-symbols/archive-rounded.svg?color=%231a73e8'
 };
 
 function buildFilterCard() {
@@ -43,6 +46,7 @@ function buildFilterCard() {
 
   return card
     .addSection(buildPresetsSection_())
+    .addSection(buildStoragePresetsSection_())
     .addSection(buildCustomFilterSection_())
     .addSection(buildDateRangeSection_())
     .addSection(buildPreviewButtonSection_())
@@ -80,6 +84,36 @@ function presetRow_(title, iconUrl, subtitle, filters) {
       CardService.newAction()
         .setFunctionName('onPresetClick')
         .setParameters({ filters: JSON.stringify(filters) })
+    );
+}
+
+function buildStoragePresetsSection_() {
+  return CardService.newCardSection()
+    .setHeader('<b>FREE UP STORAGE</b>')
+    .addWidget(presetRow_(
+      'Huge emails',
+      ICON.storage,
+      'Larger than 25 MB',
+      { sizeMinMB: 25 }
+    ))
+    .addWidget(presetRow_(
+      'Big attachments',
+      ICON.attach,
+      'Attachments over 10 MB',
+      { sizeMinMB: 10, hasAttachment: true }
+    ))
+    .addWidget(presetRow_(
+      'Old & heavy',
+      ICON.archive,
+      'Over 5 MB and older than 5 years',
+      { sizeMinMB: 5, hasAttachment: true, olderThan: '5y' }
+    ))
+    .addWidget(
+      CardService.newTextParagraph()
+        .setText('<font color="#5f6368">' +
+          'Trashed mail still counts against your Gmail storage for 30 days. ' +
+          'Empty Gmail Trash to free space immediately.' +
+        '</font>')
     );
 }
 
@@ -157,11 +191,12 @@ function buildPreviewButtonSection_() {
     .addWidget(CardService.newButtonSet().addButton(previewBtn).addButton(saveRecurringBtn));
 }
 
-function buildPreviewCard(filters, count, capped, estimated) {
+function buildPreviewCard(filters, count, capped, estimated, bytesEstimate) {
   const query = buildQuery_(filters);
   const countText = capped
     ? count.toLocaleString() + '+'
     : (estimated ? '~' + count.toLocaleString() : count.toLocaleString());
+  const isStoragePreset = (Number(filters.sizeMinMB) || 0) > 0;
 
   const heroSection = CardService.newCardSection();
   if (count === 0) {
@@ -170,6 +205,14 @@ function buildPreviewCard(filters, count, capped, estimated) {
         .setStartIcon(CardService.newIconImage().setIconUrl(ICON.none))
         .setText('<b>No matching emails</b>')
         .setBottomLabel('Try a different filter.')
+    );
+  } else if (isStoragePreset && bytesEstimate > 0) {
+    heroSection.addWidget(
+      CardService.newDecoratedText()
+        .setStartIcon(CardService.newIconImage().setIconUrl(ICON.storage))
+        .setText('<font color="' + BRAND_BLUE + '"><b>~' + formatBytes_(bytesEstimate) + '</b></font> can be freed')
+        .setBottomLabel(countText + ' email' + (count === 1 ? '' : 's') + ' · estimate')
+        .setWrapText(true)
     );
   } else {
     heroSection.addWidget(
@@ -204,7 +247,8 @@ function buildPreviewCard(filters, count, capped, estimated) {
               filters: JSON.stringify(filters),
               count: String(count),
               total: String(count),
-              capped: capped ? '1' : '0'
+              capped: capped ? '1' : '0',
+              bytesEstimate: String(bytesEstimate || 0)
             })
         )
     );
@@ -249,6 +293,14 @@ function buildPreviewCard(filters, count, capped, estimated) {
 function truncate_(s, n) {
   s = String(s || '');
   return s.length > n ? s.substring(0, n - 1) + '…' : s;
+}
+
+function formatBytes_(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(0) + ' MB';
+  return (n / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
 function escapeHtml_(s) {
@@ -350,18 +402,26 @@ function buildSenderBreakdownCard_(filters, breakdown, totalCount, totalCapped) 
   return card.build();
 }
 
-function buildConfirmCard(filters, count, total, capped) {
+function buildConfirmCard(filters, count, total, capped, bytesEstimate) {
   total = total || count;
   const countText = capped ? count.toLocaleString() + '+' : count.toLocaleString();
+  bytesEstimate = Number(bytesEstimate) || 0;
 
   const warning = CardService.newDecoratedText()
     .setStartIcon(CardService.newIconImage().setIconUrl(ICON.warn))
     .setText('<b>Confirm trash</b>')
     .setBottomLabel('Recoverable for 30 days');
 
+  const isStoragePreset = (Number(filters.sizeMinMB) || 0) > 0;
+  const detailText = isStoragePreset && bytesEstimate > 0
+    ? 'Moving <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
+      ' (~' + formatBytes_(bytesEstimate) + ') to <b>Trash</b>. ' +
+      'Empty Gmail Trash afterwards to free this storage immediately.'
+    : 'Moving <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
+      ' to <b>Trash</b>. Gmail keeps trashed mail for 30 days, then deletes it permanently.';
+
   const detail = CardService.newDecoratedText()
-    .setText('Moving <b>' + countText + '</b> email' + (count === 1 ? '' : 's') +
-             ' to <b>Trash</b>. Gmail keeps trashed mail for 30 days, then deletes it permanently.')
+    .setText(detailText)
     .setWrapText(true);
 
   const confirm = CardService.newTextButton()
@@ -374,7 +434,8 @@ function buildConfirmCard(filters, count, total, capped) {
         .setParameters({
           filters: JSON.stringify(filters),
           total: String(total),
-          deletedSoFar: '0'
+          deletedSoFar: '0',
+          bytesEstimate: String(bytesEstimate || 0)
         })
     );
 
@@ -396,23 +457,28 @@ function buildConfirmCard(filters, count, total, capped) {
     .build();
 }
 
-function buildResultCard(filters, result, total, deletedSoFar) {
+function buildResultCard(filters, result, total, deletedSoFar, bytesEstimate) {
   total = Number(total) || (result.deleted + result.remaining);
   deletedSoFar = (Number(deletedSoFar) || 0) + result.deleted;
+  bytesEstimate = Number(bytesEstimate) || 0;
   const remaining = result.remaining;
   const remainingCapped = result.remainingCapped;
   const isDone = remaining === 0;
   const remainingText = remainingCapped
     ? remaining.toLocaleString() + '+'
     : remaining.toLocaleString();
+  const isStoragePreset = (Number(filters.sizeMinMB) || 0) > 0;
 
   const hero = CardService.newDecoratedText()
     .setStartIcon(CardService.newIconImage().setIconUrl(isDone ? ICON.check : ICON.trash));
 
   if (isDone) {
+    const sizeNote = isStoragePreset && bytesEstimate > 0
+      ? '~' + formatBytes_(bytesEstimate) + ' pending after empty Trash'
+      : 'Trashed ' + deletedSoFar.toLocaleString() + ' email' +
+        (deletedSoFar === 1 ? '' : 's');
     hero.setText('<font color="' + SUCCESS_GREEN + '"><b>All done</b></font>')
-        .setBottomLabel('Trashed ' + deletedSoFar.toLocaleString() + ' email' +
-                        (deletedSoFar === 1 ? '' : 's'));
+        .setBottomLabel(sizeNote);
   } else {
     hero.setText('<b>' + deletedSoFar.toLocaleString() + '</b> trashed so far')
         .setBottomLabel(remainingText + ' still match the filter');
@@ -431,9 +497,12 @@ function buildResultCard(filters, result, total, deletedSoFar) {
   }
 
   if (isDone) {
+    const refreshNote = isStoragePreset
+      ? 'Empty Gmail Trash to free the storage immediately. Refresh Gmail to update the list.'
+      : 'Refresh Gmail to update the inbox list.';
     heroSection.addWidget(
       CardService.newTextParagraph()
-        .setText('<font color="#5f6368">Refresh Gmail to update the inbox list.</font>')
+        .setText('<font color="#5f6368">' + refreshNote + '</font>')
     );
   }
 
@@ -462,6 +531,20 @@ function buildResultCard(filters, result, total, deletedSoFar) {
       .setOnClickAction(CardService.newAction().setFunctionName('onBackToHome'))
   );
   buttonSection.addWidget(resultButtons);
+
+  if (isDone && isStoragePreset && deletedSoFar > 0) {
+    buttonSection.addWidget(
+      CardService.newButtonSet().addButton(
+        CardService.newTextButton()
+          .setText('Open Gmail Trash')
+          .setOpenLink(
+            CardService.newOpenLink()
+              .setUrl('https://mail.google.com/mail/u/0/#trash')
+              .setOpenAs(CardService.OpenAs.FULL_SIZE)
+          )
+      )
+    );
+  }
 
   if (isDone && deletedSoFar > 0) {
     buttonSection.addWidget(
