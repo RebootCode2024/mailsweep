@@ -28,8 +28,8 @@ var ICON = {
   repeat:    'https://api.iconify.design/material-symbols/repeat-rounded.svg?color=%231a73e8',
   schedule:  'https://api.iconify.design/material-symbols/event-repeat-rounded.svg?color=%231a73e8',
   paused:    'https://api.iconify.design/material-symbols/pause-circle-rounded.svg?color=%235f6368',
-  storage:   'https://api.iconify.design/material-symbols/database-rounded.svg?color=%231a73e8',
-  attach:    'https://api.iconify.design/material-symbols/attachment-rounded.svg?color=%231a73e8',
+  storage:   'https://api.iconify.design/material-symbols/inventory-2-rounded.svg?color=%231a73e8',
+  attach:    'https://api.iconify.design/material-symbols/attach-file-rounded.svg?color=%231a73e8',
   archive:   'https://api.iconify.design/material-symbols/archive-rounded.svg?color=%231a73e8'
 };
 
