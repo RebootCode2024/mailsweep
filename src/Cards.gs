@@ -221,13 +221,9 @@ function buildPreviewButtonSection_() {
     .setBackgroundColor(BRAND_BLUE)
     .setOnClickAction(CardService.newAction().setFunctionName('onPreviewClick'));
 
-  const saveRecurringBtn = CardService.newTextButton()
-    .setText('Save as recurring')
-    .setOnClickAction(CardService.newAction().setFunctionName('onSaveRecipePrompt'));
-
   return CardService.newCardSection()
     .addWidget(hint)
-    .addWidget(CardService.newButtonSet().addButton(previewBtn).addButton(saveRecurringBtn));
+    .addWidget(CardService.newButtonSet().addButton(previewBtn));
 }
 
 function buildPreviewCard(filters, count, capped, estimated, bytesEstimate) {
