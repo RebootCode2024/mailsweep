@@ -43,6 +43,16 @@ export default {
         });
       }
 
+      // Keep-alive ping from the developer's weekly Apps Script trigger.
+      // Short-circuits before any DB access so it doesn't create a fake row.
+      // The purpose is just to register activity against the Supabase free
+      // tier idle counter so the project doesn't auto-pause.
+      if (email === "keepalive@mailsweep.app") {
+        return new Response(JSON.stringify({ pong: true }), {
+          headers: jsonHeaders,
+        });
+      }
+
       const supabase = ctx.supabase;
       const today = new Date().toISOString().slice(0, 10);
 
