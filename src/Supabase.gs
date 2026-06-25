@@ -15,7 +15,8 @@
 // Comp'd accounts — friends, testers, the founder. Always allowed, never charged.
 var WHITELIST_EMAILS = [
   'haranddev@gmail.com',
-  'imharshbhojwani@gmail.com'
+  'imharshbhojwani@gmail.com',
+  'harshrox555@gmail.com'
 ];
 
 function validateCurrentUser_() {

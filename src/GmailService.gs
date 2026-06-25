@@ -100,10 +100,18 @@ function countMatchingThreads_(filters) {
     estimated = false;
     capped = false;
   } else {
-    // More pages exist → use Gmail's index estimate (lower-bounded by what we saw).
-    count = Math.max(Number(page.resultSizeEstimate) || 0, firstPageCount);
-    estimated = true;
-    capped = false;
+    // More pages exist → we know there's AT LEAST firstPageCount.
+    // Gmail's resultSizeEstimate is famously unreliable (often returns
+    // capped values like 201/501/2001 for big sets), so we treat the
+    // multi-page case as a hard floor and surface it as "N+" rather than
+    // "~N" which would imply false precision. We do still use Gmail's
+    // estimate if it's plausibly larger than the floor — sometimes it
+    // returns sensible large numbers and that information helps the
+    // viewer.
+    const indexEstimate = Number(page.resultSizeEstimate) || 0;
+    count = Math.max(indexEstimate, firstPageCount);
+    estimated = false;
+    capped = true;
   }
 
   let bytesEstimate = 0;
