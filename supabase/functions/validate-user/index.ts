@@ -43,11 +43,19 @@ export default {
         });
       }
 
-      // Keep-alive ping from the developer's weekly Apps Script trigger.
-      // Short-circuits before any DB access so it doesn't create a fake row.
-      // The purpose is just to register activity against the Supabase free
-      // tier idle counter so the project doesn't auto-pause.
+      // Keep-alive ping from the developer's Apps Script trigger.
+      //
+      // IMPORTANT: Supabase's free-tier auto-pause timer is based on
+      // DATABASE activity, not edge-function invocations. An earlier version
+      // returned here WITHOUT touching the DB — so the project still paused.
+      // We now issue a trivial read (no write, no fake row created) so the
+      // ping registers as genuine Postgres activity and resets the idle timer.
       if (email === "keepalive@mailsweep.app") {
+        try {
+          await ctx.supabase.from("users").select("email_id").limit(1);
+        } catch (_) {
+          // Even a failed query counts as a DB connection; ignore errors.
+        }
         return new Response(JSON.stringify({ pong: true }), {
           headers: jsonHeaders,
         });

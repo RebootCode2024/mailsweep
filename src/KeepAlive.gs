@@ -19,8 +19,12 @@ var KEEPALIVE_EMAIL = 'keepalive@mailsweep.app';
 
 /**
  * One-time setup. Run this once from the Apps Script editor under the
- * developer account that owns the deployment. Creates one weekly trigger
- * that fires every Monday at ~6am script timezone.
+ * developer account that owns the deployment. Creates a trigger that fires
+ * every 3 days.
+ *
+ * Why every 3 days (not weekly): Supabase pauses after 7 days idle. A weekly
+ * ping leaves zero margin — one late/missed fire and the project pauses.
+ * Every 3 days means even two consecutive misses stay under the 7-day wall.
  *
  * Idempotent — re-running won't create duplicate triggers.
  */
@@ -28,11 +32,10 @@ function installKeepAliveTrigger() {
   removeKeepAliveTrigger();
   ScriptApp.newTrigger(KEEPALIVE_HANDLER)
     .timeBased()
-    .everyWeeks(1)
-    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .everyDays(3)
     .atHour(6)
     .create();
-  console.log('Keep-alive trigger installed. Will fire every Monday ~6am.');
+  console.log('Keep-alive trigger installed. Will fire every 3 days ~6am.');
 }
 
 function removeKeepAliveTrigger() {
