@@ -27,7 +27,7 @@
 
 <main class="legal">
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: 14 June 2026</p>
+  <p class="updated">Last updated: 7 July 2026</p>
 
   <p>
     MailSweep is a Gmail sidebar add-on that helps you bulk-delete emails matching
@@ -127,7 +127,57 @@
     layer.
   </p>
 
-  <h2>6. Limited Use compliance</h2>
+  <h2>6. How we protect your data</h2>
+  <p>
+    MailSweep is designed to protect sensitive data — including the Gmail data
+    covered by the <code>gmail.modify</code> scope — through the following
+    mechanisms:
+  </p>
+  <ul>
+    <li>
+      <strong>Data minimization for sensitive Gmail data.</strong> Sensitive
+      Gmail data — message content, subjects, bodies, attachments, and recipient
+      lists — is never copied off your Google account, never stored, and never
+      transmitted to our servers or any third party. All processing of Gmail data
+      happens inside Google Apps Script, which runs on Google's own infrastructure.
+      Because this sensitive data never leaves Google's systems, it is never
+      exposed to any environment we operate.
+    </li>
+    <li>
+      <strong>Encryption in transit.</strong> Every network request MailSweep
+      makes — Gmail API calls, the license-validation call to our backend, and the
+      payment webhook — is transmitted over HTTPS/TLS. No data is ever sent in
+      plaintext.
+    </li>
+    <li>
+      <strong>Encryption at rest.</strong> The limited account data we store (your
+      Gmail address and license/trial status flags, as listed in section 3.2) is
+      held in a Supabase-hosted PostgreSQL database that encrypts stored data at
+      rest using AES-256.
+    </li>
+    <li>
+      <strong>Access controls.</strong> The account-data table is protected by
+      PostgreSQL Row-Level Security and is reachable only by our server-side
+      validation function, which authenticates with a secret service-role key.
+      The public/anonymous key cannot read, modify, or delete any row. All
+      application secrets (database keys and service URLs) are stored in Google
+      Apps Script Script Properties — never in client-visible code or in our
+      public source repository.
+    </li>
+    <li>
+      <strong>No human access to Gmail data.</strong> We have no technical means
+      to read your Gmail messages, and we never do. The only account data a human
+      on our side could view is your Gmail address and paid/trial status, and only
+      for legitimate support requests or for investigating security abuse.
+    </li>
+    <li>
+      <strong>Deletion on request.</strong> You may have your stored account
+      record erased at any time (see Data retention and Contact below), which
+      removes the only sensitive identifier we hold — your Gmail address.
+    </li>
+  </ul>
+
+  <h2>7. Limited Use compliance</h2>
   <p>
     MailSweep's use of information received from Google APIs adheres to the
     <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank" rel="noopener">Google API Services User Data Policy</a>,
@@ -137,7 +187,7 @@
     except with your explicit consent for support purposes.
   </p>
 
-  <h2>7. Data retention</h2>
+  <h2>8. Data retention</h2>
   <p>
     Your account record persists in our database for as long as the add-on is
     installed on your Gmail account, plus a reasonable window afterwards to handle
@@ -145,13 +195,13 @@
     (see Contact below); we will erase your record within seven days.
   </p>
 
-  <h2>8. Children</h2>
+  <h2>9. Children</h2>
   <p>
     MailSweep is not directed at children under 13 and does not knowingly collect
     information about them.
   </p>
 
-  <h2>9. Changes to this policy</h2>
+  <h2>10. Changes to this policy</h2>
   <p>
     If we update this policy in a way that materially affects how data is handled,
     we will update the "Last updated" date at the top and, for existing users,
